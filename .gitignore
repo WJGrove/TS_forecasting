@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.dist/
+build/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Envs & secrets
+.env
+.env.*
+!.env.example
+.venv/
+
+# Editors/OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Data/artifacts
+data/
+.chroma/
+.ipynb_checkpoints/
+
+# VS Code: keep workspace configs, ignore junk
+.vscode/*.code-snippets
+
