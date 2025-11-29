@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 from pyspark.sql import DataFrame, SparkSession
@@ -40,8 +40,9 @@ class TSPreprocessingConfig:
     date_col: str = "ds"
 
     # Lists of columns
-    numerical_cols: List[str] = None
-    cols_for_outlier_removal: List[str] = None
+    # make these list defs "or None", an optional list, and set in __post_init__
+    numerical_cols: List[str] = field(default_factory=list)
+    cols_for_outlier_removal: List[str] = field(default_factory=list)
 
     # Interpolation config
     interpolation_method: str = "linear"  # 'linear', 'polynomial', 'spline'
@@ -60,11 +61,20 @@ class TSPreprocessingConfig:
     outlier_threshold: float = 3.0  # standard deviations
 
     def __post_init__(self) -> None:
-        if self.numerical_cols is None:
-            # Same idea as your legacy script: y, y_clean, price
+        # 1) Validate thresholds
+        if (
+            self.inactive_threshold <= 0
+            or self.insufficient_data_threshold <= 0
+            or self.short_series_threshold <= 0
+            or self.outlier_threshold <= 0
+        ):
+            raise ValueError("These thresholds must be positive")
+
+        # 2) Fill defaults for lists if caller didn't supply them
+        if not self.numerical_cols:
             self.numerical_cols = [self.value_col, "y_clean", "gross_price_fc"]
 
-        if self.cols_for_outlier_removal is None:
+        if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
 
     @property
