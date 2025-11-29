@@ -162,9 +162,9 @@ class TSPreprocessor:
         df_weekly = df.groupBy(c.date_col, c.group_col).agg(
             F.sum(c.value_col).alias(c.value_col),
             (
-                F.sum(F.col("gross_price_fc") * F.col(c.value_col))
+                F.sum(F.col("gross_price_per_unit") * F.col(c.value_col))
                 / F.sum(F.col(c.value_col))
-            ).alias("gross_price_fc"),
+            ).alias("gross_price_per_unit"),
             F.first("parent_company_fc").alias("parent_company_fc"),
             F.first("soldto_id").alias("soldto_id"),
             F.first("item_id_fc").alias("item_id_fc"),
