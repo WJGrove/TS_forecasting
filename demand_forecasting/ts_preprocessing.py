@@ -38,14 +38,7 @@ class TSPreprocessingConfig:
     # Column names in the input table
     raw_value_col: str = "ordered_qty"
     raw_date_col: str = "req_del_fw_start_date"
-
-    # Time-series ID / grouping configuration
-    # group_col is the name of the column used to identify a time series in the pipeline.
     group_col: str = "time_series_id"
-    # if group_key_cols is non-empty, we will construct group_col from these columns.
-    # If group_key_cols is empty, we assume group_col already exists in the source.
-    group_key_cols: List[str] = field(default_factory=list)
-    group_key_separator: str = "|"
 
     customer_parent_company_col: str | None = "parent_company_fc"
     customer_col: str | None = "soldto_id"
@@ -59,6 +52,13 @@ class TSPreprocessingConfig:
     product_dim_col1: str | None = "package_type"
     product_dim_col2: str | None = "recipe"
     product_dim_col3: str | None = None
+
+    # Time-series ID / grouping configuration
+    # group_col is the name of the column used to identify a time series in the pipeline.
+    # if group_key_cols is non-empty when the config is instantiated, we will construct group_col (the ts IDs) from these columns.
+    # If group_key_cols is empty when the config is instantiated, we assume group_col already exists in the source and use it.
+    group_key_cols: List[str] = field(default_factory=list)
+    group_key_separator: str = "|"
 
     # Standardized column names used during processing
     value_col: str = "y"
@@ -162,13 +162,13 @@ class TSPreprocessor:
 
         Steps:
         - load & clean
+        - ensure group_col exists (time series IDs exist)
         - aggregate to period
         - fill gaps & dimensions
         - remove outliers & interpolate
         - flag short series
         - optionally apply Box-Cox and per-series median
         """
-        c = self.config
 
         df_raw = self.load_source_data()
         df_clean = self.basic_cleaning(df_raw)
@@ -254,7 +254,7 @@ class TSPreprocessor:
             if c.group_col not in df.columns:
                 raise ValueError(
                     f"group_key_cols is empty and '{c.group_col}' is not present "
-                    "in the source data; cannot define series IDs."
+                    "in the data frame; cannot define series IDs."
                 )
 
         return df
