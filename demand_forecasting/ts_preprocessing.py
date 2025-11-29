@@ -1,5 +1,3 @@
-# ts_preprocessing.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +6,7 @@ from typing import List
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-# These come from what used to be `%run "/.../general_forecasting_functions"`
+# The following functions still have to be checked and many will likely need to be rewritten.
 from general_forecasting_functions import (
     upsample_groupedweeklyts_spark,
     remove_data_prior_to_inactive_periods,
@@ -40,7 +38,7 @@ class TSPreprocessingConfig:
     value_col: str = "y"
     date_col: str = "ds"
 
-    # Numeric columns
+    # Lists of columns
     numerical_cols: List[str] = None
     cols_for_outlier_removal: List[str] = None
 
@@ -48,11 +46,17 @@ class TSPreprocessingConfig:
     interpolation_method: str = "linear"  # 'linear', 'polynomial', 'spline'
     interpolation_order: int = 3  # used for 'polynomial' / 'spline'
 
-    # Thresholds
-    inactive_threshold: int = 4
-    insufficient_data_threshold: int = 1
-    short_series_threshold: int = 52
-    outlier_threshold: float = 3.0
+    # Thresholds (these are )
+    inactive_threshold: int = (
+        4  # the number of consecutive 0s before you consider a series inactive.
+    )
+    insufficient_data_threshold: int = (
+        1  # the number of observations...doublecheck the function to word this comment properly
+    )
+    short_series_threshold: int = (
+        52  # the number of observations...doublecheck the function to word this comment properly
+    )
+    outlier_threshold: float = 3.0  # standard deviations
 
     def __post_init__(self) -> None:
         if self.numerical_cols is None:
@@ -64,5 +68,5 @@ class TSPreprocessingConfig:
 
     @property
     def cols_for_interpolation(self) -> List[str]:
-        # mimic: [col for col in numerical_cols if col not in [value_col]]
+        # we only need to interpolate columns with missing values
         return [c for c in self.numerical_cols if c != self.value_col]
