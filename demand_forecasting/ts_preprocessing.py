@@ -25,8 +25,10 @@ class TSPreprocessingConfig:
     Change the names as needed for each project.
     """
 
-    # Where to read the input data
+    # source and destination tables
     source_table: str = "forecast_dev.data_science.sales_forecast_source_view"
+    output_catalog: str = "forecast_dev.data_science"
+    output_table: str = "sales_preprocessed"
 
     # Column names in the input/"raw" table
     raw_value_col: str = "ordered_qty"
@@ -47,14 +49,20 @@ class TSPreprocessingConfig:
     interpolation_method: str = "linear"  # 'linear', 'polynomial', 'spline'
     interpolation_order: int = 3  # used for 'polynomial' / 'spline'
 
-    # Thresholds:
+    # Seasonality and thresholds:
+    seasonal_period: int = 52
+    # the number of periods...[doublecheck the function to word this comment properly]:
+    short_series_threshold: int = 52
     # the number of consecutive 0s before you consider a series inactive:
     inactive_threshold: int = 4
-    # the number of observations...[doublecheck the function to word this comment properly]:
+    # the number of periods...[doublecheck the function to word this comment properly]:
     insufficient_data_threshold: int = 1
-    # the number of observations...[doublecheck the function to word this comment properly]:
-    short_series_threshold: int = 52
+
     outlier_threshold: float = 3.0  # standard deviations
+
+    # Diagnostics configuration (regarding short/new series volume warning thresholds)
+    short_series_vol_warn1: float = 3.0  # percent of total volume
+    short_series_vol_warn2: float = 5.0  # percent of total volume
 
     def __post_init__(self) -> None:
         # 1) Validate thresholds
