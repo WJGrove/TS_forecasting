@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
+import pytz
+
 from dataclasses import dataclass, field
 from typing import List
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+import pyspark.sql.window as Window
 
 # Most of the functions called here need to be refactored.
 from general_forecasting_functions import (
@@ -14,6 +18,7 @@ from general_forecasting_functions import (
     fill_dim_nulls_bfill_ffill,
     spark_remove_outliers,
     spark_pandas_interpolate_convert,
+    boxcox_multi_ts_sps,
 )
 
 
@@ -67,7 +72,6 @@ class TSPreprocessingConfig:
 
     timezone_name: str = "America/Chicago"
 
-
     def __post_init__(self) -> None:
         # 1) Validate thresholds
         if (
@@ -89,9 +93,9 @@ class TSPreprocessingConfig:
     def cols_for_interpolation(self) -> List[str]:
         # we only need to interpolate columns with missing values
         return [c for c in self.numerical_cols if c != self.value_col]
-    
+
     @property
-    def output_table_path(self) -> str:
+    def output_table_fqn(self) -> str:
         return f"{self.output_catalog}.{self.output_table_name}"
 
 
@@ -100,16 +104,19 @@ class TSPreprocessor:
     Preprocessing pipeline for panel time series such as weekly sales by customer/product.
 
     """
+
     def __init__(self, spark: SparkSession, config: TSPreprocessingConfig) -> None:
         self.spark = spark
         self.config = config
 
     # ---------- Top-level orchestrator ----------
 
-    def run(self) -> DataFrame:
+    def run(self, *, with_boxcox: bool = True) -> DataFrame:
         """
         Run the full preprocessing pipeline and return the final, interpolated DataFrame.
         """
+        c = self.config
+
         df_raw = self.load_source_data()
         df_clean = self.basic_cleaning(df_raw)
         df_weekly = self.aggregate_to_period(df_clean)
@@ -118,7 +125,14 @@ class TSPreprocessor:
         df_dims_filled = self.fill_dimensions(df_active)
         df_out_rem = self.remove_outliers(df_dims_filled)
         df_interpolated = self.interpolate(df_out_rem)
-        return df_interpolated
+        df_shorts_flagged = self.flag_short_series(df_interpolated)
+
+        if with_boxcox:
+            transformed = self.apply_boxcox_and_median(df_shorts_flagged)
+        else:
+            transformed = df_shorts_flagged
+
+        return transformed
 
     # ---------- Individual steps (roughly matching your notebook cells) ----------
 
@@ -223,4 +237,61 @@ class TSPreprocessor:
             c.date_col,
             c.interpolation_method,
             c.interpolation_order,
+        )
+
+    def flag_short_series(self, df: DataFrame) -> DataFrame:
+        c = self.config
+
+        series_lengths = df.groupBy(c.group_col).agg(
+            F.count(c.date_col).alias("series_length")
+        )
+
+        df_with_len = df.join(
+            series_lengths,
+            on=c.group_col,
+            how="left",
+        )
+
+        df_with_flag = df_with_len.withColumn(
+            "is_short_series",
+            F.col("series_length") < F.lit(c.short_series_threshold),
+        )
+
+        return df_with_flag
+
+    def apply_boxcox_and_median(self, df: DataFrame) -> DataFrame:
+        c = self.config
+
+        # boxcox_multi_ts_sps is assumed to be a helper in some utilities module
+        transformed = boxcox_multi_ts_sps(
+            df,
+            group_col=c.group_col,
+            value_col="y_clean_int",
+            date_col=c.date_col,
+        )
+
+        window_spec = Window.partitionBy(c.group_col)
+        transformed = transformed.withColumn(
+            "series_median",
+            F.expr("percentile_approx(y_clean_int, 0.5)").over(window_spec),
+        )
+
+        return transformed
+
+    def write_output_table(self, df: DataFrame) -> None:
+        c = self.config
+        tz = pytz.timezone(c.timezone_name)
+        table_update_date = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        df_with_update = df.withColumn(
+            "table_update_datetime", F.lit(table_update_date)
+        )
+
+        df_with_update.createOrReplaceGlobalTempView("transformed_df_with_update_date")
+
+        self.spark.sql(
+            f"""
+            CREATE OR REPLACE TABLE {c.output_table_fqn} AS
+            SELECT * FROM global_temp.transformed_df_with_update_date
+            """
         )
