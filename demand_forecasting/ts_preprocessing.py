@@ -49,7 +49,7 @@ class TSPreprocessingConfig:
 
     product_id_col: str | None = "item_id_fc"
     product_unit_price_col: str | None = "gross_price_per_unit"
-    product_wavg_unit_price_col: str | None = "product_wavg_unit_price"
+    product_wavg_unit_price_col: str = "product_wavg_unit_price"
     product_dim_col1: str | None = "package_type"
     product_dim_col2: str | None = "recipe"
     product_dim_col3: str | None = None
@@ -194,12 +194,22 @@ class TSPreprocessor:
     def basic_cleaning(self, df: DataFrame) -> DataFrame:
         """
         Drop duplicates and normalize column names to (value_col, date_col).
+        All other columns (dims, price) keep the names specified in the config.
         """
         c = self.config
+
+        required_cols = [c.raw_value_col, c.raw_date_col, c.group_col]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns in source data: {missing_cols}")
+
         df = df.dropDuplicates()
-        df = df.withColumnRenamed(c.raw_value_col, c.value_col)
-        df = df.withColumnRenamed(c.raw_date_col, c.date_col)
-        # Note: product_unit_price_col and dim columns keep their original names
+
+        if c.raw_value_col != c.value_col:
+            df = df.withColumnRenamed(c.raw_value_col, c.value_col)
+        if c.raw_date_col != c.date_col:
+            df = df.withColumnRenamed(c.raw_date_col, c.date_col)
+
         return df
 
     def aggregate_to_period(self, df: DataFrame) -> DataFrame:
@@ -216,19 +226,10 @@ class TSPreprocessor:
             F.sum(c.value_col).alias(c.value_col),
         ]
 
-        # Keep the original price column
+        # calculate weighted average unit price for each period
         if (
             c.product_unit_price_col is not None
             and c.product_unit_price_col in df.columns
-        ):
-            agg_exprs.append(
-                F.first(c.product_unit_price_col).alias(c.product_unit_price_col)
-            )
-        # weighted average unit price
-        if (
-            c.product_unit_price_col is not None
-            and c.product_unit_price_col in df.columns
-            and c.product_wavg_unit_price_col is not None
         ):
             agg_exprs.append(
                 (
