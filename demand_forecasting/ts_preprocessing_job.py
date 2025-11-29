@@ -1,3 +1,4 @@
+# The first ten lines of this file are only needed for testing and debugging locally, outside of Databricks.
 from pyspark.sql import SparkSession
 
 # Create a local SparkSession
@@ -6,8 +7,8 @@ spark = (
     .master("local[*]")  # use all local cores
     .getOrCreate()
 )
+# Everything above this line is only needed for testing and debugging locally, outside of Databricks.
 
-# Everything above this line is only needed for local testing and debugging locally, outside of Databricks.
 
 from ts_preprocessing import TSPreprocessingConfig, TSPreprocessor
 import time
@@ -17,6 +18,7 @@ config = TSPreprocessingConfig(
     source_table="forecast_dev.data_science.ts_source_view",
     output_catalog="forecast_dev.data_science",
     output_table_name="ts_preprocessed",
+    group_key_cols=["parent_company_fc", "item_id_fc"],
 )
 
 pre = TSPreprocessor(spark, config)
