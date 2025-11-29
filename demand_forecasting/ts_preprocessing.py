@@ -55,8 +55,10 @@ class TSPreprocessingConfig:
 
     # Time-series ID / grouping configuration
     # group_col is the name of the column used to identify a time series in the pipeline.
-    # if group_key_cols is non-empty when the config is instantiated, we will construct group_col (the ts IDs) from these columns.
-    # If group_key_cols is empty when the config is instantiated, we assume group_col already exists in the source and use it.
+    # if group_key_cols is non-empty when the config is instantiated
+    # , we construct group_col (the ts IDs) from these columns.
+    # If group_key_cols is empty when the config is instantiated
+    # , we assume group_col already exists in the source and use it.
     group_key_cols: List[str] = field(default_factory=list)
     group_key_separator: str = "|"
 
@@ -65,7 +67,8 @@ class TSPreprocessingConfig:
     date_col: str = "ds"
 
     # Lists of columns
-    # "field(default_factory=list)" creates a fresh list per instance; "[]" would be treated like the same list everywhere it appears.
+    # "field(default_factory=list)" creates a fresh list per instance; "[]" would be
+    # treated like the same list everywhere it appears.
     numerical_cols: List[str] = field(default_factory=list)
     cols_for_outlier_removal: List[str] = field(default_factory=list)
 
