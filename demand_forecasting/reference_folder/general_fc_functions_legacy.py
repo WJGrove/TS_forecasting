@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import numpy as np
 from scipy.stats import boxcox
 import matplotlib.pyplot as plt
+import pandas as pd
+from pyspark.sql.functions import pandas_udf, PandasUDFType
 
 
 def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"):
@@ -502,7 +504,19 @@ def boxcox_multi_ts_sps(
     return transformed_spark_df
 
 
-# def inverse_boxcox
+# Define the inverse Box-Cox transformation function
+@pandas_udf(schema, PandasUDFType.GROUPED_MAP)
+def inverse_boxcox_transform(pdf):
+    time_series_id = pdf["time_series_id"].iloc[0]  # Assuming time_series_id is uniform within each group
+    lam_info = lambda_values_dict.get(time_series_id, {"fitted_lambda": None, "is_transformed": False})
+
+    if lam_info["is_transformed"]:
+        lam = lam_info["fitted_lambda"]
+        pdf["y_hat"] = pdf["y_hat"].apply(lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x)
+        pdf["y_hat_upper"] = pdf["y_hat_upper"].apply(lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x)
+        pdf["y_hat_lower"] = pdf["y_hat_lower"].apply(lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x)
+
+    return pdf
 
 
 def plot_aggregated_data(spark_df, group_col1, value_col, group_col2=None):
