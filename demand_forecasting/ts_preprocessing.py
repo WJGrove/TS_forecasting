@@ -38,8 +38,14 @@ class TSPreprocessingConfig:
     # Column names in the input table
     raw_value_col: str = "ordered_qty"
     raw_date_col: str = "req_del_fw_start_date"
-    # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis (e.g., product + customer + region).
+
+    # Time-series ID / grouping configuration
+    # group_col is the name of the column used to identify a time series in the pipeline.
     group_col: str = "time_series_id"
+    # if group_key_cols is non-empty, we will construct group_col from these columns.
+    # If group_key_cols is empty, we assume group_col already exists in the source.
+    group_key_cols: List[str] = field(default_factory=list)
+    group_key_separator: str = "|"
 
     customer_parent_company_col: str | None = "parent_company_fc"
     customer_col: str | None = "soldto_id"
@@ -99,9 +105,7 @@ class TSPreprocessingConfig:
         # 2) Fill defaults for lists
         if not self.numerical_cols:
             self.numerical_cols = [self.value_col, "y_clean"]
-            if self.product_unit_price_col is not None:
-                self.numerical_cols.append(self.product_unit_price_col)
-            if self.product_wavg_unit_price_col is not None:
+            if self.product_wavg_unit_price_col:
                 self.numerical_cols.append(self.product_wavg_unit_price_col)
 
         if not self.cols_for_outlier_removal:
@@ -168,7 +172,8 @@ class TSPreprocessor:
 
         df_raw = self.load_source_data()
         df_clean = self.basic_cleaning(df_raw)
-        df_weekly = self.aggregate_to_period(df_clean)
+        df_with_id = self.ensure_group_col(df_clean)
+        df_weekly = self.aggregate_to_period(df_with_id)
         df_dates_filled = self.fill_missing_dates(df_weekly)
         df_active = self.remove_inactive_and_insufficient(df_dates_filled)
         df_dims_filled = self.fill_dimensions(df_active)
@@ -194,21 +199,63 @@ class TSPreprocessor:
     def basic_cleaning(self, df: DataFrame) -> DataFrame:
         """
         Drop duplicates and normalize column names to (value_col, date_col).
-        All other columns (dims, price) keep the names specified in the config.
+
+        All other columns (dims, price, group keys) keep the names specified in the config.
         """
         c = self.config
 
-        required_cols = [c.raw_value_col, c.raw_date_col, c.group_col]
-        missing_cols = [col for col in required_cols if col not in df.columns]
-        if missing_cols:
-            raise ValueError(f"Missing required columns in source data: {missing_cols}")
+        # 1) Check required columns exist in the source
+        required = [c.raw_value_col, c.raw_date_col]
+        if c.group_key_cols:
+            required.extend(c.group_key_cols)
+        else:
+            required.append(c.group_col)
+
+        missing = [col for col in required if col not in df.columns]
+        if missing:
+            raise ValueError(f"Missing required columns in source data: {missing}")
 
         df = df.dropDuplicates()
 
+        # 2) Rename value/date to standardized names if they differ
         if c.raw_value_col != c.value_col:
             df = df.withColumnRenamed(c.raw_value_col, c.value_col)
+
         if c.raw_date_col != c.date_col:
             df = df.withColumnRenamed(c.raw_date_col, c.date_col)
+
+        return df
+
+    def ensure_group_col(self, df: DataFrame) -> DataFrame:
+        """
+        Ensure the time-series ID column (group_col) exists.
+
+        - If group_key_cols is non-empty, build group_col from those columns.
+        - If group_key_cols is empty, assume group_col already exists in the data.
+        """
+        c = self.config
+
+        if c.group_key_cols:
+            # Make sure all key columns are present
+            missing = [col for col in c.group_key_cols if col not in df.columns]
+            if missing:
+                raise ValueError(f"Missing group key columns in source data: {missing}")
+
+            # Build a string series ID by concatenating key columns
+            df = df.withColumn(
+                c.group_col,
+                F.concat_ws(
+                    c.group_key_separator,
+                    *[F.col(col).cast("string") for col in c.group_key_cols],
+                ),
+            )
+        else:
+            # No keys specified; expect group_col to already exist
+            if c.group_col not in df.columns:
+                raise ValueError(
+                    f"group_key_cols is empty and '{c.group_col}' is not present "
+                    "in the source data; cannot define series IDs."
+                )
 
         return df
 
