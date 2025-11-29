@@ -31,9 +31,9 @@ class TSPreprocessingConfig:
     """
 
     # source and destination tables
-    source_table: str = "forecast_dev.data_science.sales_forecast_source_view"
+    source_table: str = "forecast_dev.data_science.ts_source_view"
     output_catalog: str = "forecast_dev.data_science"
-    output_table_name: str = "sales_preprocessed"
+    output_table_name: str = "ts_preprocessed"
 
     # Column names in the input table
     raw_value_col: str = "ordered_qty"
