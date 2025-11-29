@@ -48,10 +48,11 @@ class TSPreprocessingConfig:
     customer_age_segment_col: str | None = "age_segment"
 
     product_id_col: str | None = "item_id_fc"
-    product_price_col: str | None = "gross_price_per_unit"
+    product_unit_price_col: str | None = "gross_price_per_unit"
+    product_wavg_unit_price_col: str | None = "product_wavg_unit_price"
     product_dim_col1: str | None = "package_type"
     product_dim_col2: str | None = "recipe"
-    product_dim_col3: str | None = "color"
+    product_dim_col3: str | None = None
 
     # Standardized column names used during processing
     value_col: str = "y"
@@ -98,8 +99,10 @@ class TSPreprocessingConfig:
         # 2) Fill defaults for lists
         if not self.numerical_cols:
             self.numerical_cols = [self.value_col, "y_clean"]
-            if self.product_price_col is not None:
-                self.numerical_cols.append(self.product_price_col)
+            if self.product_unit_price_col is not None:
+                self.numerical_cols.append(self.product_unit_price_col)
+            if self.product_wavg_unit_price_col is not None:
+                self.numerical_cols.append(self.product_wavg_unit_price_col)
 
         if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
@@ -196,7 +199,7 @@ class TSPreprocessor:
         df = df.dropDuplicates()
         df = df.withColumnRenamed(c.raw_value_col, c.value_col)
         df = df.withColumnRenamed(c.raw_date_col, c.date_col)
-        # Note: product_price_col and dim columns keep their original names
+        # Note: product_unit_price_col and dim columns keep their original names
         return df
 
     def aggregate_to_period(self, df: DataFrame) -> DataFrame:
@@ -204,7 +207,7 @@ class TSPreprocessor:
         Aggregate to the target granularity: one row per (group_col, date_col).
 
         - Sums the value column.
-        - Optionally computes a weighted average price using product_price_col.
+        - Optionally computes a weighted average price using product_unit_price_col.
         - Carries dimension columns using first non-null value.
         """
         c = self.config
@@ -213,13 +216,25 @@ class TSPreprocessor:
             F.sum(c.value_col).alias(c.value_col),
         ]
 
-        # Optional weighted average price
-        if c.product_price_col is not None and c.product_price_col in df.columns:
+        # Keep the original price column
+        if (
+            c.product_unit_price_col is not None
+            and c.product_unit_price_col in df.columns
+        ):
+            agg_exprs.append(
+                F.first(c.product_unit_price_col).alias(c.product_unit_price_col)
+            )
+        # weighted average unit price
+        if (
+            c.product_unit_price_col is not None
+            and c.product_unit_price_col in df.columns
+            and c.product_wavg_unit_price_col is not None
+        ):
             agg_exprs.append(
                 (
-                    F.sum(F.col(c.product_price_col) * F.col(c.value_col))
+                    F.sum(F.col(c.product_unit_price_col) * F.col(c.value_col))
                     / F.sum(F.col(c.value_col))
-                ).alias(c.product_price_col)
+                ).alias(c.product_wavg_unit_price_col)
             )
 
         # Dimension columns: use FIRST() per group to carry them through
