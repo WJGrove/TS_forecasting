@@ -41,6 +41,18 @@ class TSPreprocessingConfig:
     # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis (e.g., product + customer + region).
     group_col: str = "time_series_id"
 
+    customer_parent_company_col: str | None = "parent_company_fc"
+    customer_col: str | None = "soldto_id"
+    customer_state_col: str | None = "soldto_state"
+    customer_market_col: str | None = "market_area"
+    customer_age_segment_col: str | None = "age_segment"
+
+    product_id_col: str | None = "item_id_fc"
+    product_price_col: str | None = "gross_price_per_unit"
+    product_dim_col1: str | None = "package_type"
+    product_dim_col2: str | None = "recipe"
+    product_dim_col3: str | None = "color"
+
     # Standardized column names used during processing
     value_col: str = "y"
     date_col: str = "ds"
@@ -65,7 +77,7 @@ class TSPreprocessingConfig:
 
     outlier_threshold: float = 3.0  # standard deviations
 
-    # Diagnostics configuration (regarding short/new series volume warning thresholds)
+    # Diagnostics configuration (short/new series volume warning thresholds)
     short_series_vol_warn1: float = 3.0  # percent of total volume
     short_series_vol_warn2: float = 5.0  # percent of total volume
     short_series_vol_warn3: float = 10.0  # percent of total volume
@@ -74,17 +86,20 @@ class TSPreprocessingConfig:
 
     def __post_init__(self) -> None:
         # 1) Validate thresholds
-        if (
-            self.inactive_threshold <= 0
-            or self.insufficient_data_threshold <= 0
-            or self.short_series_threshold <= 0
-            or self.outlier_threshold <= 0
-        ):
-            raise ValueError("These thresholds must be positive")
+        if self.short_series_threshold <= 0:
+            raise ValueError("short_series_threshold must be positive")
+        if self.inactive_threshold <= 0:
+            raise ValueError("inactive_threshold must be positive")
+        if self.insufficient_data_threshold <= 0:
+            raise ValueError("insufficient_data_threshold must be positive")
+        if self.outlier_threshold <= 0:
+            raise ValueError("outlier_threshold must be positive")
 
         # 2) Fill defaults for lists
         if not self.numerical_cols:
-            self.numerical_cols = [self.value_col, "y_clean", "gross_price_per_unit"]
+            self.numerical_cols = [self.value_col, "y_clean"]
+            if self.product_price_col is not None:
+                self.numerical_cols.append(self.product_price_col)
 
         if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
@@ -95,6 +110,30 @@ class TSPreprocessingConfig:
         return [c for c in self.numerical_cols if c != self.value_col]
 
     @property
+    def dim_cols(self) -> List[str]:
+        """
+        All configured dimension columns that should be carried/aggregated.
+
+        Any that are None (or later set to None for a particular project)
+        are automatically skipped.
+        """
+        return [
+            c
+            for c in [
+                self.customer_parent_company_col,
+                self.customer_col,
+                self.customer_state_col,
+                self.customer_market_col,
+                self.customer_age_segment_col,
+                self.product_id_col,
+                self.product_dim_col1,
+                self.product_dim_col2,
+                self.product_dim_col3,
+            ]
+            if c is not None
+        ]
+
+    @property
     def output_table_fqn(self) -> str:
         return f"{self.output_catalog}.{self.output_table_name}"
 
@@ -102,7 +141,6 @@ class TSPreprocessingConfig:
 class TSPreprocessor:
     """
     Preprocessing pipeline for panel time series such as weekly sales by customer/product.
-
     """
 
     def __init__(self, spark: SparkSession, config: TSPreprocessingConfig) -> None:
@@ -113,7 +151,15 @@ class TSPreprocessor:
 
     def run(self, *, with_boxcox: bool = True) -> DataFrame:
         """
-        Run the full preprocessing pipeline and return the final, interpolated DataFrame.
+        Run the full preprocessing pipeline and return the final transformed DataFrame.
+
+        Steps:
+        - load & clean
+        - aggregate to period
+        - fill gaps & dimensions
+        - remove outliers & interpolate
+        - flag short series
+        - optionally apply Box-Cox and per-series median
         """
         c = self.config
 
@@ -134,7 +180,7 @@ class TSPreprocessor:
 
         return transformed
 
-    # ---------- Individual steps (roughly matching your notebook cells) ----------
+    # ---------- Individual steps ----------
 
     def load_source_data(self) -> DataFrame:
         """
@@ -150,28 +196,39 @@ class TSPreprocessor:
         df = df.dropDuplicates()
         df = df.withColumnRenamed(c.raw_value_col, c.value_col)
         df = df.withColumnRenamed(c.raw_date_col, c.date_col)
+        # Note: product_price_col and dim columns keep their original names
         return df
 
     def aggregate_to_period(self, df: DataFrame) -> DataFrame:
         """
         Aggregate to the target granularity: one row per (group_col, date_col).
-        Currently this matches your weekly aggregation logic.
+
+        - Sums the value column.
+        - Optionally computes a weighted average price using product_price_col.
+        - Carries dimension columns using first non-null value.
         """
         c = self.config
 
-        df_weekly = df.groupBy(c.date_col, c.group_col).agg(
+        agg_exprs = [
             F.sum(c.value_col).alias(c.value_col),
-            (
-                F.sum(F.col("gross_price_per_unit") * F.col(c.value_col))
-                / F.sum(F.col(c.value_col))
-            ).alias("gross_price_per_unit"),
-            F.first("parent_company_fc").alias("parent_company_fc"),
-            F.first("soldto_id").alias("soldto_id"),
-            F.first("item_id_fc").alias("item_id_fc"),
-            F.first("bottle_type").alias("bottle_type"),
-        )
+        ]
 
-        return df_weekly.orderBy(c.date_col, c.group_col)
+        # Optional weighted average price
+        if c.product_price_col is not None and c.product_price_col in df.columns:
+            agg_exprs.append(
+                (
+                    F.sum(F.col(c.product_price_col) * F.col(c.value_col))
+                    / F.sum(F.col(c.value_col))
+                ).alias(c.product_price_col)
+            )
+
+        # Dimension columns: use FIRST() per group to carry them through
+        for dim_col in c.dim_cols:
+            if dim_col in df.columns:
+                agg_exprs.append(F.first(dim_col).alias(dim_col))
+
+        df_agg = df.groupBy(c.date_col, c.group_col).agg(*agg_exprs)
+        return df_agg.orderBy(c.date_col, c.group_col)
 
     def fill_missing_dates(self, df_weekly: DataFrame) -> DataFrame:
         """
@@ -240,6 +297,9 @@ class TSPreprocessor:
         )
 
     def flag_short_series(self, df: DataFrame) -> DataFrame:
+        """
+        Add series_length and is_short_series flags based on short_series_threshold.
+        """
         c = self.config
 
         series_lengths = df.groupBy(c.group_col).agg(
@@ -260,9 +320,11 @@ class TSPreprocessor:
         return df_with_flag
 
     def apply_boxcox_and_median(self, df: DataFrame) -> DataFrame:
+        """
+        Apply Box-Cox transform (using helper) and add per-series median of y_clean_int.
+        """
         c = self.config
 
-        # boxcox_multi_ts_sps is assumed to be a helper in some utilities module
         transformed = boxcox_multi_ts_sps(
             df,
             group_col=c.group_col,
@@ -279,6 +341,9 @@ class TSPreprocessor:
         return transformed
 
     def write_output_table(self, df: DataFrame) -> None:
+        """
+        Add a table_update_datetime column and write out to the configured table.
+        """
         c = self.config
         tz = pytz.timezone(c.timezone_name)
         table_update_date = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
