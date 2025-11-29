@@ -1,6 +1,5 @@
 # Databricks notebook source
 # %pip install colorama
-# I installed this^^ module on the 'data Science Cluster'
 
 from colorama import *
 import psutil
@@ -24,7 +23,17 @@ import seaborn as sns
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
-from pyspark.sql.types import BooleanType, StringType, IntegerType, DoubleType, DateType, StructType, StructField, DecimalType, TimestampType
+from pyspark.sql.types import (
+    BooleanType,
+    StringType,
+    IntegerType,
+    DoubleType,
+    DateType,
+    StructType,
+    StructField,
+    DecimalType,
+    TimestampType,
+)
 from pyspark.sql import DataFrame
 import warnings
 import traceback
@@ -40,5 +49,6 @@ from scipy.special import inv_boxcox
 from statsmodels.stats.diagnostic import het_breuschpagan
 
 from mpl_toolkits.mplot3d import Axes3D
-# may be redundant 
+
+# may be redundant
 from pyspark.sql.functions import pandas_udf, PandasUDFType

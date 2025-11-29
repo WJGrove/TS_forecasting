@@ -25,10 +25,10 @@ class TSPreprocessingConfig:
     Change the names as needed for each project.
     """
 
-    # Where to read the raw data
+    # Where to read the input data
     source_table: str = "forecast_dev.data_science.sales_forecast_source_view"
 
-    # Column names in the *raw* table
+    # Column names in the input/"raw" table
     raw_value_col: str = "ordered_qty_fc"
     raw_date_col: str = "req_del_fw_start_date"
     group_col: str = (
