@@ -29,9 +29,9 @@ class TSPreprocessingConfig:
     source_table: str = "forecast_dev.data_science.sales_forecast_source_view"
 
     # Column names in the input/"raw" table
-    raw_value_col: str = "ordered_qty_fc"
+    raw_value_col: str = "ordered_qty"
     raw_date_col: str = "req_del_fw_start_date"
-    # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis.
+    # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis (e.g., product + customer + region).
     group_col: str = "time_series_id"
 
     # Standardized column names used during processing
@@ -48,7 +48,7 @@ class TSPreprocessingConfig:
     interpolation_order: int = 3  # used for 'polynomial' / 'spline'
 
     # Thresholds:
-    # the number of consecutive 0s before you consider a series inactive.
+    # the number of consecutive 0s before you consider a series inactive:
     inactive_threshold: int = 4
     # the number of observations...[doublecheck the function to word this comment properly]:
     insufficient_data_threshold: int = 1
@@ -68,7 +68,7 @@ class TSPreprocessingConfig:
 
         # 2) Fill defaults for lists
         if not self.numerical_cols:
-            self.numerical_cols = [self.value_col, "y_clean", "gross_price_fc"]
+            self.numerical_cols = [self.value_col, "y_clean", "gross_price_per_unit"]
 
         if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
@@ -82,7 +82,7 @@ class TSPreprocessingConfig:
 class TSPreprocessor:
     """
     Preprocessing pipeline for panel time series such as weekly sales by customer/product.
-    
+
     """
 
     def __init__(self, spark: SparkSession, config: TSPreprocessingConfig) -> None:
