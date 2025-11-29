@@ -28,9 +28,9 @@ class TSPreprocessingConfig:
     # source and destination tables
     source_table: str = "forecast_dev.data_science.sales_forecast_source_view"
     output_catalog: str = "forecast_dev.data_science"
-    output_table: str = "sales_preprocessed"
+    output_table_name: str = "sales_preprocessed"
 
-    # Column names in the input/"raw" table
+    # Column names in the input table
     raw_value_col: str = "ordered_qty"
     raw_date_col: str = "req_del_fw_start_date"
     # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis (e.g., product + customer + region).
@@ -63,6 +63,10 @@ class TSPreprocessingConfig:
     # Diagnostics configuration (regarding short/new series volume warning thresholds)
     short_series_vol_warn1: float = 3.0  # percent of total volume
     short_series_vol_warn2: float = 5.0  # percent of total volume
+    short_series_vol_warn3: float = 10.0  # percent of total volume
+
+    timezone_name: str = "America/Chicago"
+
 
     def __post_init__(self) -> None:
         # 1) Validate thresholds
@@ -85,6 +89,10 @@ class TSPreprocessingConfig:
     def cols_for_interpolation(self) -> List[str]:
         # we only need to interpolate columns with missing values
         return [c for c in self.numerical_cols if c != self.value_col]
+    
+    @property
+    def output_table_path(self) -> str:
+        return f"{self.output_catalog}.{self.output_table_name}"
 
 
 class TSPreprocessor:
@@ -92,7 +100,6 @@ class TSPreprocessor:
     Preprocessing pipeline for panel time series such as weekly sales by customer/product.
 
     """
-
     def __init__(self, spark: SparkSession, config: TSPreprocessingConfig) -> None:
         self.spark = spark
         self.config = config
