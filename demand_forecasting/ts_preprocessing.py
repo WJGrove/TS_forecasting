@@ -31,9 +31,8 @@ class TSPreprocessingConfig:
     # Column names in the input/"raw" table
     raw_value_col: str = "ordered_qty_fc"
     raw_date_col: str = "req_del_fw_start_date"
-    group_col: str = (
-        "time_series_id"  # This ID is constructed baased on the desired granularity of the forecast.
-    )
+    # The TS ID is the group_col and constructed based on the desired granularity of the TS analysis.
+    group_col: str = "time_series_id"
 
     # Standardized column names used during processing
     value_col: str = "y"
@@ -83,6 +82,7 @@ class TSPreprocessingConfig:
 class TSPreprocessor:
     """
     Preprocessing pipeline for panel time series such as weekly sales by customer/product.
+    
     """
 
     def __init__(self, spark: SparkSession, config: TSPreprocessingConfig) -> None:
