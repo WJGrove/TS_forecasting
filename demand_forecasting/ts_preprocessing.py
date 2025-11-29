@@ -11,7 +11,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
 # Most of the functions called here need to be refactored.
-from general_forecasting_functions import (
+from demand_forecasting.reference_folder.general_fc_functions_legacy import (
     upsample_groupedweeklyts_spark,
     remove_data_prior_to_inactive_periods,
     remove_series_w_insuff_data,
