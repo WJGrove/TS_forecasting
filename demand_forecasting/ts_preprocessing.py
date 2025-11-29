@@ -8,7 +8,7 @@ from typing import List
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-import pyspark.sql.window as Window
+from pyspark.sql.window import Window
 
 # Most of the functions called here need to be refactored.
 from general_forecasting_functions import (
