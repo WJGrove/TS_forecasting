@@ -60,7 +60,7 @@ class TSDiagnostics:
     def compute_short_series_stats(
         self,
         *,
-        value_col: str = "y_clean",
+        value_col: str = "y_clean", # whether to use the cleaned value column or the original column is dependent on the use case
     ) -> ShortSeriesStats:
         """
         Reproduce and generalize your 'percent of volume in short series' logic.
@@ -100,7 +100,7 @@ class TSDiagnostics:
                 warn_level="none",
                 warn_message=(
                     "No short series present with the current short_series_threshold; "
-                    "short-series handling will not affect total volume."
+                    "short-series handling will not affect the accuracy of the analysis."
                 ),
             )
 
