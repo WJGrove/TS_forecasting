@@ -62,6 +62,9 @@ class TSPreprocessingConfig:
     group_key_cols: List[str] = field(default_factory=list)
     group_key_separator: str = "|"
 
+    # Time axis configuration
+    time_granularity: str = "week"  # this is the period the analysis is done on
+
     # Standardized column names for the date and value columns for processing
     value_col: str = "y"
     date_col: str = "ds"
@@ -80,7 +83,7 @@ class TSPreprocessingConfig:
     seasonal_period: int = 52
     # the number of periods...[doublecheck the function to word this comment properly]:
     short_series_threshold: int = 52
-    # the number of consecutive 0s before you consider a series inactive:
+    # the number of consecutive periods with 0s before you consider a series inactive:
     inactive_threshold: int = 4
     # the number of periods...[doublecheck the function to word this comment properly]:
     insufficient_data_threshold: int = 1
@@ -95,7 +98,7 @@ class TSPreprocessingConfig:
     timezone_name: str = "America/Chicago"
 
     def __post_init__(self) -> None:
-        # 1) Validate thresholds
+        # 1) Validate thresholds and time granularity
         if self.short_series_threshold <= 0:
             raise ValueError("short_series_threshold must be positive")
         if self.inactive_threshold <= 0:
@@ -104,6 +107,8 @@ class TSPreprocessingConfig:
             raise ValueError("insufficient_data_threshold must be positive")
         if self.outlier_threshold <= 0:
             raise ValueError("outlier_threshold must be positive")
+        if self.time_granularity.lower() not in {"week"}:
+            raise ValueError("time_granularity must be 'week'")
 
         # 2) Fill defaults for lists
         if not self.numerical_cols:
@@ -166,6 +171,7 @@ class TSPreprocessor:
         Steps:
         - load & clean
         - ensure group_col exists (time series IDs exist)
+        = add a period column
         - aggregate to period
         - fill gaps & dimensions
         - remove outliers & interpolate
@@ -176,7 +182,8 @@ class TSPreprocessor:
         df_raw = self.load_source_data()
         df_clean = self.basic_cleaning(df_raw)
         df_with_id = self.ensure_group_col(df_clean)
-        df_weekly = self.aggregate_to_period(df_with_id)
+        df_with_ds = self.add_period_column(df_with_id)
+        df_weekly = self.aggregate_to_period(df_with_ds)
         df_dates_filled = self.fill_missing_dates(df_weekly)
         df_active = self.remove_inactive_and_insufficient(df_dates_filled)
         df_dims_filled = self.fill_dimensions(df_active)
@@ -201,9 +208,10 @@ class TSPreprocessor:
 
     def basic_cleaning(self, df: DataFrame) -> DataFrame:
         """
-        Drop duplicates and normalize column names to (value_col, date_col).
+        Drop duplicates and normalize target value column name to (value_col).
 
-        All other columns (dims, price, group keys) keep the names specified in the config.
+        The raw_date_col is left as-is; add_period_column() will derive the
+        standardized period key (date_col, e.g. 'ds') later.
         """
         c = self.config
 
@@ -220,14 +228,13 @@ class TSPreprocessor:
 
         df = df.dropDuplicates()
 
-        # 2) Rename value/date to standardized names if they differ
+        # 2) Rename value to standardized name if needed
         if c.raw_value_col != c.value_col:
             df = df.withColumnRenamed(c.raw_value_col, c.value_col)
 
-        if c.raw_date_col != c.date_col:
-            df = df.withColumnRenamed(c.raw_date_col, c.date_col)
-
+        # raw_date_col is intentionally *not* renamed here
         return df
+
 
     def ensure_group_col(self, df: DataFrame) -> DataFrame:
         """
@@ -261,6 +268,44 @@ class TSPreprocessor:
                 )
 
         return df
+
+    def add_period_column(self, df: DataFrame) -> DataFrame:
+        """
+        Derive the period key (date_col, e.g. 'ds') from the raw date column,
+        according to the configured time_granularity.
+
+        Currently only 'week' is supported (weekly start-of-week).
+        """
+        c = self.config
+
+        if c.raw_date_col not in df.columns:
+            raise ValueError(
+                f"raw_date_col '{c.raw_date_col}' not present in DataFrame."
+            )
+
+        gran = c.time_granularity.lower()
+
+        if gran == "week":
+            # Ensure we have a timestamp, then truncate to start-of-week and cast back to date.
+            base_ts = F.to_timestamp(F.col(c.raw_date_col))
+            df = df.withColumn(
+                c.date_col,
+                F.to_date(F.date_trunc("week", base_ts)),
+            )
+        # # Later, when all the functions are refactored, we can add support for daily:
+        # elif gran == "day":
+        #     df = df.withColumn(
+        #         c.date_col,
+        #         F.to_date(c.raw_date_col),
+        #     )
+        else:
+            raise ValueError(
+                f"time_granularity '{c.time_granularity}' is not supported yet; "
+                "TSPreprocessor currently implements weekly processing only."
+            )
+
+        return df
+
 
     def aggregate_to_period(self, df: DataFrame) -> DataFrame:
         """
