@@ -81,7 +81,7 @@ class TSPreprocessingConfig:
 
     # Seasonality and thresholds:
     seasonal_period: int = 52
-    # the number of periods...[doublecheck the function to word this comment properly]:
+    # the number of periods below which a series is considered "short" (e.g., weeks):
     short_series_threshold: int = 52
     # the number of consecutive periods with 0s before you consider a series inactive:
     inactive_threshold: int = 4

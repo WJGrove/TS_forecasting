@@ -63,8 +63,7 @@ class TSDiagnostics:
         value_col: str = "y_clean", # whether to use the cleaned value column or the original column is dependent on the use case
     ) -> ShortSeriesStats:
         """
-        Reproduce and generalize your 'percent of volume in short series' logic.
-
+        Compute summary statistics for the "short" time series classified by the threshold in the config.
         - Uses 'is_short_series' and 'series_length' from TSPreprocessor.flag_short_series().
         - Computes:
           * total number of series
@@ -173,13 +172,13 @@ class TSDiagnostics:
             level = "high"
             msg = (
                 f"Short series represent {pct:.2f}% of volume (between {w2}% and {w3}%). "
-                "Short-series handling may materially affect total forecast; validate assumptions."
+                "Short-series handling may materially affect total forecast; validate assumptions and review methodology."
             )
         else:
             level = "very_high"
             msg = (
                 f"Short series represent {pct:.2f}% of volume (>= {w3}%). "
-                "Short-series forecasting method is critical; consider richer models or manual review."
+                "Short-series forecasting method is critical to overall forecast accuracy; consider richer models for these series."
             )
 
         return level, msg
