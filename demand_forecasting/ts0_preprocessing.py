@@ -432,7 +432,7 @@ class TSPreprocessor:
 
     def apply_boxcox_and_median(self, df: DataFrame) -> DataFrame:
         """
-        Apply Box-Cox transform (using helper) and add per-series median of y_clean_int.
+        Apply Box-Cox transform (using helper) and add per-series median of the INTERPOLATED values.
         """
         c = self.config
 

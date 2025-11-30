@@ -446,7 +446,7 @@ def boxcox_multi_ts_sps(
     df,
     group_col="time_series_id",
     date_col="ds",
-    value_col="y",
+    value_col="y_clean_int",
     lower_lambda_threshold=0.9,
     upper_lambda_threshold=1.1,
 ):
