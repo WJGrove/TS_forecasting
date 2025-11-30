@@ -10,7 +10,7 @@ spark = (
 # Everything above this line is only needed for testing and debugging locally, outside of Databricks.
 
 
-from ts_preprocessing import TSPreprocessingConfig, TSPreprocessor
+from demand_forecasting.ts0_preprocessing import TSPreprocessingConfig, TSPreprocessor
 import time
 
 
