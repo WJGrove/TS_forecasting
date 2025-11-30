@@ -10,7 +10,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-# Most of the functions called here need to be refactored.
+# The functions below are defined in a legacy reference folder and will be refactored after the preprocessing, diagnostics, and plotting modules are stable.
 from demand_forecasting.reference_folder.general_fc_functions_legacy import (
     upsample_groupedweeklyts_spark,
     remove_data_prior_to_inactive_periods,
