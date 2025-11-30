@@ -493,7 +493,7 @@ plt.show()
 # dimensional_cols = [
 #     f.name for f in short_series_df.schema.fields if not isinstance(f.dataType, (DoubleType, IntegerType, DateType, DecimalType))
 #     ]
-# # Create a list of aggregation expressions that just grab the first non-NULL value ion the dim cols for each series.
+# # Create a list of aggregation expressions that grab the first non-NULL value in the dim cols for each series.
 # agg_exprs = [F.first(F.col(col), ignorenulls=True).alias(col) for col in dimensional_cols]
 # # Group by 'time_series_id' and aggregate using the list of expressions
 # short_series_dimensional_details_df = short_series_df.groupBy('time_series_id').agg(*agg_exprs)
