@@ -62,7 +62,7 @@ class TSPreprocessingConfig:
     group_key_cols: List[str] = field(default_factory=list)
     group_key_separator: str = "|"
 
-    # Standardized column names used during processing
+    # Standardized column names for the date and value columns for processing
     value_col: str = "y"
     date_col: str = "ds"
 
