@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 
+# The following function was reviewed on 12/01/2025. Good to go.
 
 def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"):
 
@@ -27,7 +28,8 @@ def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"
 
     return df
 
-
+# instead of chopping off the history prior to inactivew periods, maybe we should flag them (precedes_inactive_period)?
+# parts of this will probably need to be moved to the data preprocessing module later on.
 def remove_data_prior_to_inactive_periods(
     df, value_col="y", date_col="ds", group_col="time_series_id", inactive_threshold=4
 ):
@@ -201,6 +203,7 @@ def remove_data_prior_to_inactive_periods(
 
     return df_filtered
 
+# The following function was reviewed on 12/01/2025. Good to go.
 
 def remove_series_w_insuff_data(df, group_col, insufficient_data_threshold, value_col):
     """
@@ -236,6 +239,8 @@ def remove_series_w_insuff_data(df, group_col, insufficient_data_threshold, valu
 
     return df_filtered
 
+
+# The following function was reviewed on 12/01/2025. Good to go.
 
 def fill_dim_nulls_bfill_ffill(df, group_col, date_col, cols_to_fill):
     """
