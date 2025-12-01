@@ -15,7 +15,7 @@ from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     upsample_groupedweeklyts_spark,
     remove_data_prior_to_inactive_periods,
     remove_series_w_insuff_data,
-    fill_dim_nulls_bfill_ffill,
+    fill_dim_nulls_groupwise,
     groupwise_clean_flag_outliers,
     interpolate_groupwise_numeric,
     boxcox_multi_ts_sps,
@@ -378,7 +378,7 @@ class TSPreprocessor:
         cols_excluded = [c.date_col, c.group_col] + c.numerical_cols
         cols_to_fill = [col for col in df.columns if col not in cols_excluded]
 
-        return fill_dim_nulls_bfill_ffill(df, c.group_col, c.date_col, cols_to_fill)
+        return fill_dim_nulls_groupwise(df, c.group_col, c.date_col, cols_to_fill)
 
     def remove_outliers(self, df: DataFrame) -> DataFrame:
         """

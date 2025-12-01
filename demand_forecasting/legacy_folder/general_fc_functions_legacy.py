@@ -222,7 +222,7 @@ def remove_series_w_insuff_data(df, group_col, insufficient_data_threshold, valu
 
 # The following function was reviewed on 12/01/2025. Good to go.
 
-def fill_dim_nulls_bfill_ffill(df, group_col, date_col, cols_to_fill):
+def fill_dim_nulls_groupwise(df, group_col, date_col, cols_to_fill):
     """
     Efficiently fill null values in specified columns using both backward fill and forward fill methods.
 
