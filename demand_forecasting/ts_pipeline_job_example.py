@@ -11,12 +11,16 @@ spark = (
 
 import time
 
+from pyspark.sql import functions as F
+
 from demand_forecasting.ts0_preprocessing import TSPreprocessingConfig, TSPreprocessor
 from demand_forecasting.ts1_diagnostics import TSDiagnostics
 from demand_forecasting.ts2_plots import TSPlotter, TSPlotConfig
 
 
-def main(run_plots: bool = False) -> None:
+def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
+    t_start_all = time.time()
+
     # -----------------------------
     # Config and preprocessor
     # -----------------------------
@@ -33,15 +37,15 @@ def main(run_plots: bool = False) -> None:
     # Layer 1: preprocessing
     # -----------------------------
     t0 = time.time()
-    df_final = pre.run(with_boxcox=True)  # 1A: transformations
+    df_final = pre.run(with_boxcox=use_boxcox)   # <-- toggle Box-Cox here
     t1 = time.time()
-    pre.write_output_table(df_final)  # 1B: write
+    pre.write_output_table(df_final)
     t2 = time.time()
 
     print("\n=== Layer 1: preprocessing ===")
-    print(f"  Transform runtime (TSPreprocessor.run): {t1 - t0:.2f} sec")
-    print(f"  Write runtime (write_output_table):     {t2 - t1:.2f} sec")
-    print(f"  Total Layer 1 runtime:                   {t2 - t0:.2f} sec")
+    print(f"  Transform runtime (TSPreprocessor.run, boxcox={use_boxcox}): {t1 - t0:.2f} sec")
+    print(f"  Write runtime (write_output_table):                         {t2 - t1:.2f} sec")
+    print(f"  Total Layer 1 runtime:                                      {t2 - t0:.2f} sec")
 
     # -----------------------------
     # Layer 2: diagnostics
@@ -99,50 +103,59 @@ def main(run_plots: bool = False) -> None:
             prefixes=("customer_", "product_"),
         )
 
-        # 3.3 Example: Volume by a single dimension over the last 52 periods
-        dim_for_volume = (
-            config.product_dim_col1 or config.customer_parent_company_col
-        )
-        if dim_for_volume and dim_for_volume in df_final.columns:
-            print(f"\n=== Volume by {dim_for_volume} (last 52 periods) ===")
+        # Build the list of dim columns we’ll use for 3.3 and 3.4:
+        #   - only dims that start with "customer_" or "product_"
+        #   - and are actually present in df_final
+        dim_cols_for_customer_product = [
+            col
+            for col in config.dim_cols
+            if (col.startswith("customer_") or col.startswith("product_"))
+            and col in df_final.columns
+        ]
+
+        # 3.3 Volume by dimension (T52) for ALL such dims
+        print("\n=== Layer 3: plotting (T52 volume by customer_/product_ dims) ===")
+        for dim_col in dim_cols_for_customer_product:
+            print(f"\n--- Volume by {dim_col} (last 52 periods) ---")
             plotter.plot_volume_by_dimension(
                 df_final,
-                dim_col=dim_for_volume,
+                dim_col=dim_col,
                 value_col="y_clean",
                 last_n_weeks=52,
             )
 
-        # 3.4 Example: year/day-of-year profile for one dim value
-        dim_for_year_day = (
-            config.product_dim_col1 or config.customer_parent_company_col
-        )
-        if dim_for_year_day and dim_for_year_day in df_final.columns:
-            first_val_row = (
-                df_final.select(dim_for_year_day)
-                .where(F.col(dim_for_year_day).isNotNull())
+        # 3.4 Year/day-of-year profiles for ALL such dims
+        print("\n=== Layer 3: plotting (year vs day-of-year profiles) for Leader of each dimension ===")
+        for dim_col in dim_cols_for_customer_product:
+            # Find the top value of this dim by total volume (overall) to use as our representative
+            top_val_row = (
+                df_final.groupBy(dim_col)
+                .agg(F.sum("y_clean").alias("total_volume"))
+                .orderBy(F.desc("total_volume"))
                 .limit(1)
                 .collect()
             )
-            if first_val_row:
-                example_value = first_val_row[0][0]
-                print(
-                    f"\n=== Year/day-of-year profile for "
-                    f"{dim_for_year_day} = {example_value} ==="
-                )
 
-                year_day_df = plotter.prepare_year_day_aggregation(
-                    df_final,
-                    dim_col=dim_for_year_day,
-                    value_col="y_clean",
-                )
+            if not top_val_row:
+                continue
 
-                plotter.plot_year_day_lines_for_dimension(
-                    year_day_df,
-                    dim_col=dim_for_year_day,
-                    dim_value=example_value,
-                    value_label="Sum of y_clean",
-                    use_3d=False,
-                )
+            dim_value = top_val_row[0][0]
+            print(f"\n--- Year/day-of-year profile for {dim_col} = {dim_value} ---")
+
+            year_day_df = plotter.prepare_year_day_aggregation(
+                df_final,
+                dim_col=dim_col,
+                value_col="y_clean",
+            )
+
+            # One plot per dim: multi-year lines for the single top category
+            plotter.plot_year_day_lines_for_dimension(
+                year_day_df,
+                dim_col=dim_col,
+                dim_value=dim_value,
+                value_label="Sum of y_clean",
+                use_3d=False,  # flip to True if you want the 3D view
+            )
 
         t_plot_end = time.time()
         print("\n=== Layer 3: plotting ===")
@@ -153,4 +166,12 @@ def main(run_plots: bool = False) -> None:
     # -----------------------------
     t_overall_end = time.time()
     print("\n=== Overall runtime ===")
-    print(f"  Total (Layers 1–3): {t_overall_end - t0:.2f} sec")
+    print(f"  Total (Layers 1–3): {t_overall_end - t_start_all:.2f} sec")
+
+
+if __name__ == "__main__":
+    # Example usage:
+    #   - run_plots=False for “just ETL + diagnostics” in production jobs
+    #   - use_boxcox=False if you want a quick run without transformation
+    main(run_plots=False, use_boxcox=True)
+
