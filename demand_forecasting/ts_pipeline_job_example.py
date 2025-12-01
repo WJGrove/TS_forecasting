@@ -35,7 +35,7 @@ def main(run_plots: bool = True) -> None:
     t0 = time.time()
     df_final = pre.run(with_boxcox=True)  # 1A: transformations
     t1 = time.time()
-    pre.write_output_table(df_final)  # 1B: write/I-O
+    pre.write_output_table(df_final)  # 1B: write
     t2 = time.time()
 
     print("\n=== Layer 1: preprocessing ===")
