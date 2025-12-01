@@ -99,15 +99,15 @@ def main(run_plots: bool = True) -> None:
             prefixes=("customer_", "product_"),
         )
 
-        # 3.3 Example: volume by a single dimension over the last 52 periods
-        example_dim_for_volume = (
+        # 3.3 Volume by a single dimension over the last 52 periods
+        dim_for_volume = (
             config.product_dim_col1 or config.customer_parent_company_col
         )
-        if example_dim_for_volume and example_dim_for_volume in df_final.columns:
-            print(f"\n=== Volume by {example_dim_for_volume} (last 52 periods) ===")
+        if dim_for_volume and dim_for_volume in df_final.columns:
+            print(f"\n=== Volume by {dim_for_volume} (last 52 periods) ===")
             plotter.plot_volume_by_dimension(
                 df_final,
-                dim_col=example_dim_for_volume,
+                dim_col=dim_for_volume,
                 value_col="y_clean",
                 last_n_weeks=52,
             )
