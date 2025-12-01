@@ -272,7 +272,8 @@ def fill_dim_nulls_bfill_ffill(df, group_col, date_col, cols_to_fill):
 
     return df
 
-
+# The following function was reviewed on 12/01/2025. Good to go.
+# rename to include the word "clean" somewhere.
 def spark_remove_outliers(
     df,
     cols_for_outlier_removal,
