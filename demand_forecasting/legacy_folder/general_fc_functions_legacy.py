@@ -28,119 +28,120 @@ def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"
 
     return df
 
-# instead of chopping off the history prior to inactivew periods, maybe we should flag them (precedes_inactive_period)?
-# parts of this will probably need to be moved to the data preprocessing module later on.
 def remove_data_prior_to_inactive_periods(
-    df, value_col="y", date_col="ds", group_col="time_series_id", inactive_threshold=4
-):
+    df: DataFrame,
+    value_col: str = "y",
+    date_col: str = "ds",
+    group_col: str = "time_series_id",
+    inactive_threshold: int = 4,
+    *,
+    drop_pre_inactive: bool = False,
+) -> DataFrame:
     """
-    1. Calculates inactivity_threshold_date and series_max_date, creates the is_inactive and rolling_period_sum_inactive fields,
-    and determines the activity status of each series.
-    2. Remove "obsolete" series.
-    3. Keep only the period of "iswas_inactive" series occurring after the most recent occurrence of
-       rolling_period_sum_inactive = max_rolling_period_sum_inactive.
-    4. Retain all "never_inactive" series.
+    Mark inactivity patterns within each series and optionally drop historical data
+    that precedes the last long inactive period.
 
-    :param df: Input DataFrame containing the time series data.
-    :param value_col: Column name of the value/order (default 'y').
-    :param date_col: Column name of the date (default 'ds').
-    :param group_col: Column name of the time series group identifier (default 'time_series_id').
-    :param inactive_threshold: Necessary period of inactivity in weeks (default 4).
-    :return: DataFrame with the computed fields and activity_status columns.
+    Definitions (per series):
+
+    - is_inactive:
+        1 where `value_col` is NULL or 0, else 0.
+
+    - rolling_period_sum_inactive:
+        rolling sum of is_inactive over the last `inactive_threshold` rows
+        (ordered by `date_col`).
+
+    - max_rolling_period_sum_inactive:
+        maximum rolling sum over the entire series (i.e., longest run of inactivity).
+
+    - is_obsolete:
+        True if series_max_date is more than `inactive_threshold` weeks older than the
+        global max date in the dataset.
+
+    - iswas_inactive:
+        True if the series ever has a run of `inactive_threshold` or more consecutive
+        inactive periods.
+
+    - never_inactive:
+        True if the series never has such a run.
+
+    - precedes_inactive_period:
+        For iswas_inactive series, True for all rows with date_col <= max_inactive_date,
+        where max_inactive_date is the most recent date at which the rolling sum hits
+        its maximum. False for rows after that date. For never_inactive series, False.
+
+    If drop_pre_inactive is True:
+        - All rows from obsolete series are dropped.
+        - For iswas_inactive series, rows with precedes_inactive_period=True are dropped
+          (i.e., you retain only the post-inactive segment).
     """
-    # Initial count of distinct time series
-    initial_series_count = df.select(group_col).distinct().count()
-    print(f"Initial series count: {initial_series_count}")
+    if inactive_threshold <= 0:
+        raise ValueError("inactive_threshold must be a positive integer")
 
-    # Step 1: Calculate the inactivity_threshold_date
-    current_date = datetime.now().date()
-    global_max_possible_order_date = (
-        df.filter(F.col(date_col) <= F.lit(current_date))
-        .agg(F.max(F.col(date_col)).alias("global_max_possible_order_date"))
-        .collect()[0]["global_max_possible_order_date"]
-    )
-    inactivity_threshold_date = global_max_possible_order_date - timedelta(
-        weeks=inactive_threshold
+    # 1) Determine the global max date in the dataset
+    max_date_row = df.agg(F.max(F.col(date_col)).alias("max_date")).collect()[0]
+    global_max_date = max_date_row["max_date"]
+
+    # If there is no date at all, just return the input
+    if global_max_date is None:
+        return df
+
+    # Use the global max as the "data horizon" (no dependency on wall-clock time)
+    inactivity_cutoff_date = global_max_date - timedelta(weeks=inactive_threshold)
+
+    # 2) Per-series min/max dates
+    maxdate_window = Window.partitionBy(group_col)
+    df = df.withColumn(
+        "series_max_date", F.max(F.col(date_col)).over(maxdate_window)
+    ).withColumn(
+        "series_min_date", F.min(F.col(date_col)).over(maxdate_window)
     )
 
-    # Define window specifications
-    windowSpecForInactivity = (
-        Window.partitionBy(F.col(group_col))
+    # 3) Inactivity indicator (zeros or NULLs)
+    df = df.withColumn(
+        "is_inactive",
+        F.when(F.col(value_col).isNull() | (F.col(value_col) == 0), F.lit(1)).otherwise(
+            F.lit(0)
+        ),
+    )
+
+    # 4) Rolling sum of inactive weeks over the last `inactive_threshold` periods
+    inactivity_window = (
+        Window.partitionBy(group_col)
         .orderBy(F.col(date_col))
         .rowsBetween(-(inactive_threshold - 1), 0)
     )
-    windowSpecForMaxDate = Window.partitionBy(F.col(group_col))
 
-    # Step 2: Calculate series_max_date and series_min_date
-    df = df.withColumn("series_max_date", F.max(date_col).over(windowSpecForMaxDate))
-    df = df.withColumn("series_min_date", F.min(date_col).over(windowSpecForMaxDate))
-
-    # Step 3: Identify inactive weeks (zeros and NULLs)
-    df = df.withColumn(
-        "is_inactive",
-        F.when(F.col(value_col).isNull() | (F.col(value_col) == 0), 1).otherwise(0),
-    )
-
-    # Step 4: Calculate rolling sum of inactive weeks
     df = df.withColumn(
         "rolling_period_sum_inactive",
-        F.sum(F.col("is_inactive")).over(windowSpecForInactivity),
+        F.sum(F.col("is_inactive")).over(inactivity_window),
     )
 
-    # Step 5: Determine activity_status for each series
-    # Calculate the max value of rolling_period_sum_inactive for each series
-    max_rolling_sum_window = Window.partitionBy(F.col(group_col))
+    # 5) Max rolling sum per series
+    series_window = Window.partitionBy(group_col)
     df = df.withColumn(
         "max_rolling_period_sum_inactive",
-        F.max(F.col("rolling_period_sum_inactive")).over(max_rolling_sum_window),
+        F.max(F.col("rolling_period_sum_inactive")).over(series_window),
     )
 
-    # Create activity status flag fields
+    # 6) Series-level flags
     df = df.withColumn(
-        "is_obsolete", F.col("series_max_date") < F.lit(inactivity_threshold_date)
+        "is_obsolete",
+        F.col("series_max_date") < F.lit(inactivity_cutoff_date),
     )
+
     df = df.withColumn(
-        "iswas_inactive", F.col("max_rolling_period_sum_inactive") >= inactive_threshold
+        "iswas_inactive",
+        F.col("max_rolling_period_sum_inactive") >= F.lit(inactive_threshold),
     )
+
     df = df.withColumn(
-        "never_inactive", F.col("max_rolling_period_sum_inactive") < inactive_threshold
+        "never_inactive",
+        F.col("max_rolling_period_sum_inactive") < F.lit(inactive_threshold),
     )
 
-    # df.show(30)
-
-    # # Print counts of time series satisfying each criterion
-    # obsolete_count = df.filter(F.col("is_obsolete")).select(group_col).distinct().count()
-    # print(f"Number of 'obsolete' time series: {obsolete_count}")
-
-    # iswas_inactive_count = df.filter(F.col("iswas_inactive")).select(group_col).distinct().count()
-    # print(f"Number of 'iswas_inactive' time series: {iswas_inactive_count}")
-
-    # never_inactive_count = df.filter(F.col("never_inactive")).select(group_col).distinct().count()
-    # print(f"Number of 'never_inactive' time series: {never_inactive_count}")
-
-    # Filter out "obsolete" series
-    # These series can overlap with the "iswas_inactive" series, so we need to filter them out first.
-    df = df.filter(~F.col("is_obsolete"))
-    # Count of distinct time series after filtering out "obsolete"
-    # series_count_after_obsolete = df.select(group_col).distinct().count()
-    # print(f"Series count after filtering out 'obsolete' series: {series_count_after_obsolete}")
-
-    # Separate "iswas_inactive" and "never_inactive" series
-    df_iswas_inactive = df.filter(F.col("iswas_inactive"))
-    # print(f"iswas_inactive :")
-    # df_iswas_inactive.show(30)
-    # print()
-    df_never_inactive = df.filter(F.col("never_inactive"))
-    # Count of distinct time series in each subset
-    iswas_inactive_series_count = df_iswas_inactive.select(group_col).distinct().count()
-    never_inactive_series_count = df_never_inactive.select(group_col).distinct().count()
-    # print(f"Series count of 'iswas_inactive': {iswas_inactive_series_count}")
-
-    # Handle "iswas_inactive" series
-    # Identify the most recent occurrence of max_rolling_period_sum_inactive for "iswas_inactive" series
-
-    # Find the most recent date where rolling_period_sum_inactive equals max_rolling_period_sum_inactive
-    df_iswas_inactive = df_iswas_inactive.withColumn(
+    # 7) For iswas_inactive series, find the most recent date where the rolling sum
+    #    reaches its maximum -> this defines the last long inactive window.
+    df = df.withColumn(
         "max_inactive_date",
         F.max(
             F.when(
@@ -148,60 +149,39 @@ def remove_data_prior_to_inactive_periods(
                 == F.col("max_rolling_period_sum_inactive"),
                 F.col(date_col),
             )
-        ).over(Window.partitionBy(F.col(group_col))),
+        ).over(series_window),
     )
-    # print(f"iswas_inactive after adding max_inactive_date :")
-    # df_iswas_inactive.show(30)
-    # print()
 
-    # Filter out data before the max_inactive_date
-
-    # row_count_before_filter = df_iswas_inactive.count()
-    # print(f"Row count before filtering 'iswas_inactive' based on 'max_inactive_date': {row_count_before_filter}")
-    df_iswas_inactive_filtered = df_iswas_inactive.filter(
-        F.col(date_col) > F.col("max_inactive_date")
+    # 8) Flag rows that precede that window (including the inactive window itself)
+    df = df.withColumn(
+        "precedes_inactive_period",
+        F.when(
+            F.col("iswas_inactive")
+            & (F.col(date_col) <= F.col("max_inactive_date")),
+            F.lit(True),
+        ).otherwise(F.lit(False)),
     )
-    # print(f"iswas_inactive after filtering on max_inactive_date :")
-    # df_iswas_inactive_filtered.show(30)
-    # print()
-    # Row count after filtering based on max_inactive_date
-    row_count_after_filter = df_iswas_inactive_filtered.count()
-    print(f"Row count of filtered 'iswas_inactive' series: {row_count_after_filter}")
 
-    # Drop the helper column that is no longer needed
-    df_iswas_inactive_filtered = df_iswas_inactive_filtered.drop(
-        "is_inactive",
+    # 9) Optionally drop obsolete series and pre-inactive rows to mimic legacy behavior
+    if drop_pre_inactive:
+        df = df.filter(
+            (~F.col("is_obsolete"))
+            & (
+                (~F.col("iswas_inactive"))
+                | (F.col("precedes_inactive_period") == F.lit(False))
+            )
+        )
+
+    # 10) Drop heavy intermediate columns that we don't usually need downstream.
+    # Keep the main flags and series_min_date/series_max_date.
+    df = df.drop(
+        "rolling_period_sum_inactive",
+        "max_rolling_period_sum_inactive",
         "max_inactive_date",
-        "rolling_period_sum_inactive",
-        "is_obsolete",
-        "iswas_inactive",
-        "never_inactive",
-        "max_rolling_period_sum_inactive",
-    )
-    df_never_inactive = df_never_inactive.drop(
-        "is_obsolete",
-        "iswas_inactive",
-        "never_inactive",
-        "is_inactive",
-        "rolling_period_sum_inactive",
-        "max_rolling_period_sum_inactive",
     )
 
-    # Combine the "never_inactive" series and the filtered "iswas_inactive" series
-    # Row counts before union operation
-    never_inactive_row_count = df_never_inactive.count()
-    # print(f"Series count of 'never_inactive': {never_inactive_series_count}")
-    print(f"Row count of 'never_inactive' series: {never_inactive_row_count}")
+    return df
 
-    # Perform the union to combine both DataFrames
-    df_filtered = df_never_inactive.unionByName(df_iswas_inactive_filtered)
-    # Row count after union
-    final_row_count = df_filtered.count()
-    print(
-        f"Final row count after combining 'never_inactive' and filtered 'iswas_inactive': {final_row_count}"
-    )
-
-    return df_filtered
 
 # The following function was reviewed on 12/01/2025. Good to go.
 

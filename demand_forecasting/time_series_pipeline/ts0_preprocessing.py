@@ -358,6 +358,7 @@ class TSPreprocessor:
             c.date_col,
             c.group_col,
             c.inactive_threshold,
+            drop_pre_inactive=False,
         )
 
         df_insuff = remove_series_w_insuff_data(
