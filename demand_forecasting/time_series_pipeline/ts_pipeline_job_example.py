@@ -13,9 +13,9 @@ import time
 
 from pyspark.sql import functions as F
 
-from demand_forecasting.ts0_preprocessing import TSPreprocessingConfig, TSPreprocessor
-from demand_forecasting.ts1_diagnostics import TSDiagnostics
-from demand_forecasting.ts2_plots import TSPlotter, TSPlotConfig
+from demand_forecasting.time_series_pipeline.ts0_preprocessing import TSPreprocessingConfig, TSPreprocessor
+from demand_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostics
+from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
 
 
 def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
