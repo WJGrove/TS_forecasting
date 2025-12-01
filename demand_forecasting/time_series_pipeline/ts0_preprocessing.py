@@ -14,7 +14,7 @@ from pyspark.sql.window import Window
 from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     upsample_groupedweeklyts_spark,
     remove_data_prior_to_inactive_periods,
-    remove_series_w_insuff_data,
+    remove_insuff_series,
     fill_dim_nulls_groupwise,
     groupwise_clean_flag_outliers,
     interpolate_groupwise_numeric,
@@ -361,7 +361,7 @@ class TSPreprocessor:
             drop_pre_inactive=False,
         )
 
-        df_insuff = remove_series_w_insuff_data(
+        df_insuff = remove_insuff_series(
             df_inact_rem,
             c.group_col,
             c.insufficient_data_threshold,

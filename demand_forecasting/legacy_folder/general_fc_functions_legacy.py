@@ -185,7 +185,7 @@ def remove_data_prior_to_inactive_periods(
 
 # The following function was reviewed on 12/01/2025. Good to go.
 
-def remove_series_w_insuff_data(df, group_col, insufficient_data_threshold, value_col):
+def remove_insuff_series(df, group_col, insufficient_data_threshold, value_col):
     """
     Removes series from a DataFrame based on a threshold of minimum data points.
 
