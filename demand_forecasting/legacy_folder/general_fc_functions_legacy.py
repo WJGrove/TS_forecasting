@@ -350,6 +350,8 @@ def spark_remove_outliers(
     return df
 
 
+# The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
+
 def spark_pandas_interpolate_convert(
     df, group_col, numerical_cols, date_col, interpolation_method="linear", order=3
 ):
