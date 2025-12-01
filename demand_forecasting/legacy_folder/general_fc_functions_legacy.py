@@ -515,7 +515,8 @@ def boxcox_multi_ts_sps(
 
     return transformed_spark_df
 
-# the following function relies on a global variable and schema
+# The following function must be refactored
+# It relies on a global variable and schema
 # needs newer syntax for clarity (old style grouped map pandas udf currently used)
 # it's also detached from the boxcox_multi_ts_sps function above, which writes series lambda info to a dataframe
 #
@@ -534,7 +535,6 @@ def boxcox_multi_ts_sps(
 #       -Applies inv_boxcox when lambda_col is not null.
 # That way we don't need global dictionaries and the logic is clearer.
 
-# Define the inverse Box-Cox transformation function
 @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
 def inverse_boxcox_transform(pdf):
     time_series_id = pdf["time_series_id"].iloc[
