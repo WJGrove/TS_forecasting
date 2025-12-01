@@ -118,6 +118,12 @@ class TSPreprocessingConfig:
 
         if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
+        
+        # 3) Validate interpolation method
+        if self.interpolation_method not in {"linear", "polynomial", "spline"}:
+            raise ValueError(
+                "interpolation_method must be one of 'linear', 'polynomial', or 'spline'"
+            )
 
     @property
     def cols_for_interpolation(self) -> List[str]:
@@ -439,14 +445,15 @@ class TSPreprocessor:
             date_col=c.date_col,
         )
 
-    def add_series_median(self, df: DataFrame, value_col: str = "y_clean_int") -> DataFrame:
+    def add_series_median(
+        self, df: DataFrame, value_col: str = "y_clean_int"
+    ) -> DataFrame:
         c = self.config
         window_spec = Window.partitionBy(c.group_col)
         return df.withColumn(
             "series_median",
             F.expr(f"percentile_approx({value_col}, 0.5)").over(window_spec),
         )
-
 
     def write_output_table(self, df: DataFrame) -> None:
         """

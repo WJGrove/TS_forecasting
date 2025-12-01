@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
+from typing import Literal
 
 # The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
 
@@ -334,12 +335,15 @@ def groupwise_clean_flag_outliers(
     return df
 
 
+
+InterpMethod = Literal["linear", "spline", "polynomial"] # spelling these out to satisfy Pylance in the "else" line below.
+
 def interpolate_groupwise_numeric(
     df: DataFrame,
     group_col: str,
     numerical_cols: list[str],
     date_col: str,
-    interpolation_method: str = "linear",
+    interpolation_method: InterpMethod = "linear",
     order: int = 3,
 ) -> DataFrame:
     """
@@ -374,9 +378,9 @@ def interpolate_groupwise_numeric(
 
     # Define the per-group interpolation function in pandas
     def _interpolate_group(pdf: pd.DataFrame) -> pd.DataFrame:
+
         # Sort by date within each group; keep all columns
         pdf = pdf.sort_values(by=date_col).reset_index(drop=True)
-
         # Ensure numeric columns are float64 for interpolation
         pdf[numerical_cols] = pdf[numerical_cols].astype("float64")
 
@@ -620,4 +624,3 @@ def groupwise_inv_boxcox_transform(
     )
 
     return result_df
-
