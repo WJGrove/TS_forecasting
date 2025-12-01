@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 
-# The following function was reviewed on 12/01/2025. Good to go.
+# The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
 
 def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"):
 
