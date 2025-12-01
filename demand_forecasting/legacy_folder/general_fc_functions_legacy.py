@@ -331,7 +331,7 @@ def spark_remove_outliers(
 
 
 
-def spark_pandas_interpolate_convert(
+def interpolate_groupwise_numeric(
     df: DataFrame,
     group_col: str,
     numerical_cols: list[str],

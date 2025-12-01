@@ -17,7 +17,7 @@ from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     remove_series_w_insuff_data,
     fill_dim_nulls_bfill_ffill,
     spark_remove_outliers,
-    spark_pandas_interpolate_convert,
+    interpolate_groupwise_numeric,
     boxcox_multi_ts_sps,
 )
 
@@ -397,7 +397,7 @@ class TSPreprocessor:
         Interpolate numeric columns using pandas-based interpolation.
         """
         c = self.config
-        return spark_pandas_interpolate_convert(
+        return interpolate_groupwise_numeric(
             df,
             c.group_col,
             c.cols_for_interpolation,
