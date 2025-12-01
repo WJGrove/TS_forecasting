@@ -16,7 +16,7 @@ from demand_forecasting.ts1_diagnostics import TSDiagnostics
 from demand_forecasting.ts2_plots import TSPlotter, TSPlotConfig
 
 
-def main(run_plots: bool = True) -> None:
+def main(run_plots: bool = False) -> None:
     # -----------------------------
     # Config and preprocessor
     # -----------------------------
