@@ -33,9 +33,9 @@ def main(run_plots: bool = True) -> None:
     # Layer 1: preprocessing
     # -----------------------------
     t0 = time.time()
-    df_final = pre.run(with_boxcox=True)          # 1A: transformations
+    df_final = pre.run(with_boxcox=True)  # 1A: transformations
     t1 = time.time()
-    pre.write_output_table(df_final)              # 1B: write/I-O
+    pre.write_output_table(df_final)  # 1B: write/I-O
     t2 = time.time()
 
     print("\n=== Layer 1: preprocessing ===")
@@ -100,7 +100,9 @@ def main(run_plots: bool = True) -> None:
         )
 
         # 3.3 Example: volume by a single dimension over the last 52 periods
-        example_dim_for_volume = config.product_dim_col1 or config.customer_parent_company_col
+        example_dim_for_volume = (
+            config.product_dim_col1 or config.customer_parent_company_col
+        )
         if example_dim_for_volume and example_dim_for_volume in df_final.columns:
             print(f"\n=== Volume by {example_dim_for_volume} (last 52 periods) ===")
             plotter.plot_volume_by_dimension(
@@ -111,7 +113,9 @@ def main(run_plots: bool = True) -> None:
             )
 
         # 3.4 Example: year/day-of-year profile for one dim value
-        example_dim_for_year_day = config.product_dim_col1 or config.customer_parent_company_col
+        example_dim_for_year_day = (
+            config.product_dim_col1 or config.customer_parent_company_col
+        )
         if example_dim_for_year_day and example_dim_for_year_day in df_final.columns:
             first_val_row = (
                 df_final.select(example_dim_for_year_day)

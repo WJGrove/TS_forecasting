@@ -11,6 +11,7 @@ from .ts0_preprocessing import TSPreprocessingConfig
 
 # ---------- Dataclasses for structured outputs ----------
 
+
 @dataclass
 class ShortSeriesStats:
     """
@@ -18,6 +19,7 @@ class ShortSeriesStats:
     All volumes are in the same units as the value column (e.g., cases, units).
     Percentages are 0–100.
     """
+
     total_series: int
     short_series: int
     short_series_ratio: float  # short_series / total_series
@@ -37,9 +39,10 @@ class ShortSeriesStats:
 
 # ---------- Main diagnostics class ----------
 
+
 class TSDiagnostics:
     """
-    Layer 2 diagnostics for preprocessed time series data.
+    Diagnostics layer for preprocessed panel data. For generality, this class is mostly focused on short series diagnostics.
 
     This class is intentionally *read-only*: it computes metrics on the
     preprocessed DataFrame produced by TSPreprocessor, but does not modify it.
@@ -60,7 +63,7 @@ class TSDiagnostics:
     def compute_short_series_stats(
         self,
         *,
-        value_col: str = "y_clean", # whether to use the cleaned value column or the original column is dependent on the use case
+        value_col: str = "y_clean",  # Whether to use the original, the cleaned, or the cleaned & interpolated value column is dependent on the use case.
     ) -> ShortSeriesStats:
         """
         Compute summary statistics for the "short" time series classified by the threshold in the config.
@@ -119,9 +122,9 @@ class TSDiagnostics:
 
         # Filter all series to the same date window as in your legacy code
         window_df = df.filter(F.col(c.date_col) >= F.lit(min_date_short))
-        total_row = window_df.agg(
-            F.sum(F.col(value_col)).alias("sum_total")
-        ).collect()[0]
+        total_row = window_df.agg(F.sum(F.col(value_col)).alias("sum_total")).collect()[
+            0
+        ]
 
         total_y_window = float(total_row["sum_total"] or 0.0)
 
@@ -194,11 +197,9 @@ class TSDiagnostics:
 
         if "series_length" in self.df.columns and "is_short_series" in self.df.columns:
             # Already computed by TSPreprocessor.flag_short_series()
-            return (
-                self.df
-                .select(c.group_col, "series_length", "is_short_series")
-                .dropDuplicates([c.group_col])
-            )
+            return self.df.select(
+                c.group_col, "series_length", "is_short_series"
+            ).dropDuplicates([c.group_col])
 
         # Fallback: compute lengths and short flag here
         lengths = self.df.groupBy(c.group_col).agg(
@@ -266,10 +267,8 @@ class TSDiagnostics:
 
         # Attach short-series flag (reusing precomputed column if available)
         if "series_length" in self.df.columns and "is_short_series" in self.df.columns:
-            short_flags = (
-                self.df
-                .select(c.group_col, "is_short_series")
-                .dropDuplicates([c.group_col])
+            short_flags = self.df.select(c.group_col, "is_short_series").dropDuplicates(
+                [c.group_col]
             )
             base = base.join(short_flags, on=c.group_col, how="left")
         else:
@@ -295,8 +294,7 @@ class TSDiagnostics:
 
         # Aggregate a single row with null counts for each column
         agg_exprs = [
-            F.count(F.when(F.col(col).isNull(), 1)).alias(col)
-            for col in df.columns
+            F.count(F.when(F.col(col).isNull(), 1)).alias(col) for col in df.columns
         ]
         counts_row = df.agg(*agg_exprs)
 

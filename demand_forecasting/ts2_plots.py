@@ -21,6 +21,7 @@ class TSPlotConfig:
     """
     Configuration for plotting defaults.
     """
+
     default_figsize: tuple[float, float] = (12.0, 6.0)
     # Max number of categories to show in bar charts, etc.
     max_categories: int = 20
@@ -201,27 +202,22 @@ class TSPlotter:
         # Series-level summary with is_short_series and volume
         series_summary = diagnostics.series_level_summary(value_col=value_col)
         # Attach dimension to series
-        dim_map = (
-            df.select(c.group_col, dim_col)
-            .dropDuplicates([c.group_col, dim_col])
-        )
+        dim_map = df.select(c.group_col, dim_col).dropDuplicates([c.group_col, dim_col])
 
         joined = series_summary.join(dim_map, on=c.group_col, how="left")
 
         # Aggregate by dimension
-        agg_df = (
-            joined.groupBy(dim_col)
-            .agg(
-                F.countDistinct(c.group_col).alias("total_series"),
-                F.sum(
-                    F.when(F.col("is_short_series") == True, 1).otherwise(0)
-                ).alias("short_series"),
-                F.sum(F.col("series_volume")).alias("total_volume"),
-                F.sum(
-                    F.when(F.col("is_short_series") == True, F.col("series_volume"))
-                    .otherwise(0.0)
-                ).alias("short_series_volume"),
-            )
+        agg_df = joined.groupBy(dim_col).agg(
+            F.countDistinct(c.group_col).alias("total_series"),
+            F.sum(F.when(F.col("is_short_series") == True, 1).otherwise(0)).alias(
+                "short_series"
+            ),
+            F.sum(F.col("series_volume")).alias("total_volume"),
+            F.sum(
+                F.when(
+                    F.col("is_short_series") == True, F.col("series_volume")
+                ).otherwise(0.0)
+            ).alias("short_series_volume"),
         )
 
         agg_df = agg_df.withColumn(
@@ -283,8 +279,7 @@ class TSPlotter:
         ax.set_xlabel(dim_col)
         ax.set_ylabel("Short Series (% of series)")
         ax.set_title(
-            f"Short-Series Share by {dim_col} "
-            f"(top {top_n} by total volume)"
+            f"Short-Series Share by {dim_col} " f"(top {top_n} by total volume)"
         )
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
@@ -301,8 +296,7 @@ class TSPlotter:
         ax.set_xlabel(dim_col)
         ax.set_ylabel("Short-Series Volume (% of volume)")
         ax.set_title(
-            f"Short-Series Volume Share by {dim_col} "
-            f"(top {top_n} by total volume)"
+            f"Short-Series Volume Share by {dim_col} " f"(top {top_n} by total volume)"
         )
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
@@ -369,9 +363,9 @@ class TSPlotter:
 
         if last_n_weeks is not None:
             # Use the latest date in this DF as the anchor.
-            max_date = work_df.agg(F.max(F.col(c.date_col)).alias("max_ds")).collect()[0][
-                "max_ds"
-            ]
+            max_date = work_df.agg(F.max(F.col(c.date_col)).alias("max_ds")).collect()[
+                0
+            ]["max_ds"]
             if max_date is not None:
                 # Compute cutoff date inside Spark
                 cutoff = max_date - pd.Timedelta(weeks=last_n_weeks)
@@ -429,14 +423,11 @@ class TSPlotter:
         if value_col not in df.columns:
             raise ValueError(f"value_col '{value_col}' not found in DataFrame.")
 
-        agg_df = (
-            df.groupBy(
-                dim_col,
-                F.year(F.col(c.date_col)).alias("year"),
-                F.dayofyear(F.col(c.date_col)).alias("day_of_year"),
-            )
-            .agg(F.sum(F.col(value_col)).alias("sum_value"))
-        )
+        agg_df = df.groupBy(
+            dim_col,
+            F.year(F.col(c.date_col)).alias("year"),
+            F.dayofyear(F.col(c.date_col)).alias("day_of_year"),
+        ).agg(F.sum(F.col(value_col)).alias("sum_value"))
 
         return agg_df
 
@@ -457,9 +448,7 @@ class TSPlotter:
 
         df_year_day should be the output of prepare_year_day_aggregation().
         """
-        pdf = self._spark_to_pandas(
-            df_year_day.filter(F.col(dim_col) == dim_value)
-        )
+        pdf = self._spark_to_pandas(df_year_day.filter(F.col(dim_col) == dim_value))
 
         if pdf.empty:
             print(f"No data for {dim_col} = {dim_value} in year/day aggregation.")
@@ -470,7 +459,7 @@ class TSPlotter:
         ).sort_index()
 
         # Fill missing days forward to smooth plot (optional, as you did)
-        pivot_df = pivot_df.ffill(axis=0) 
+        pivot_df = pivot_df.ffill(axis=0)
 
         if use_3d:
             # 3D stacked-line template
@@ -497,9 +486,7 @@ class TSPlotter:
             ax.set_zlabel(value_label + f" ({dim_value})")
             ax.view_init(elev=0, azim=0)
             ax.legend(title="Year", bbox_to_anchor=(1, 1), loc="upper left")
-            plt.title(
-                f"3D Year-over-Year Profile for {dim_col} = {dim_value}"
-            )
+            plt.title(f"3D Year-over-Year Profile for {dim_col} = {dim_value}")
             plt.show()
         else:
             # 2D multi-line template
@@ -512,9 +499,7 @@ class TSPlotter:
                 )
             plt.xlabel("Day of Year")
             plt.ylabel(value_label + f" ({dim_value})")
-            plt.title(
-                f"Year-over-Year Profile for {dim_col} = {dim_value}"
-            )
+            plt.title(f"Year-over-Year Profile for {dim_col} = {dim_value}")
             plt.legend(title="Year")
             plt.grid(True)
             plt.xticks(

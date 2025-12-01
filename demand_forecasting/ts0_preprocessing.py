@@ -235,7 +235,6 @@ class TSPreprocessor:
         # raw_date_col is intentionally *not* renamed here
         return df
 
-
     def ensure_group_col(self, df: DataFrame) -> DataFrame:
         """
         Ensure the time-series ID column (group_col) exists.
@@ -305,7 +304,6 @@ class TSPreprocessor:
             )
 
         return df
-
 
     def aggregate_to_period(self, df: DataFrame) -> DataFrame:
         """
