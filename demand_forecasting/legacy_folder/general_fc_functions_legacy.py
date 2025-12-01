@@ -452,7 +452,8 @@ def spark_pandas_interpolate_convert(
 
 
 # The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
-
+# information about which series were transformed and their lambda values needs to be stored for inverse transformation as well as reporting later.
+# make spark an explicit dependency argument or use SparkSession.getActiveSession()
 def boxcox_multi_ts_sps(
     df,
     group_col="time_series_id",
@@ -514,6 +515,24 @@ def boxcox_multi_ts_sps(
 
     return transformed_spark_df
 
+# the following function relies on a global variable and schema
+# needs newer syntax for clarity (old style grouped map pandas udf currently used)
+# it's also detached from the boxcox_multi_ts_sps function above, which writes series lambda info to a dataframe
+#
+#A more coherent design would be:
+
+#   1. boxcox_multi_ts_sps writes:
+
+#       -value_col → transformed (or original if not transformed).
+
+#       -lambda_col (e.g. "boxcox_lambda") with the fitted lambda or None.
+
+#   2. inverse_boxcox uses a UDF or pandas UDF that reads:
+
+#       -y_hat and lambda_col from the same row.
+
+#       -Applies inv_boxcox when lambda_col is not null.
+# That way we don't need global dictionaries and the logic is clearer.
 
 # Define the inverse Box-Cox transformation function
 @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
