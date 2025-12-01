@@ -190,11 +190,12 @@ class TSPreprocessor:
         df_out_rem = self.remove_outliers(df_dims_filled)
         df_interpolated = self.interpolate(df_out_rem)
         df_shorts_flagged = self.flag_short_series(df_interpolated)
+        df_with_median = self.add_series_median(df_shorts_flagged)
 
         if with_boxcox:
-            transformed = self.apply_boxcox_and_median(df_shorts_flagged)
+            transformed = self.apply_boxcox(df_with_median)
         else:
-            transformed = df_shorts_flagged
+            transformed = df_with_median
 
         return transformed
 
@@ -429,26 +430,23 @@ class TSPreprocessor:
 
         return df_with_flag
 
-    def apply_boxcox_and_median(self, df: DataFrame) -> DataFrame:
-        """
-        Apply Box-Cox transform (using helper) and add per-series median of the INTERPOLATED values.
-        """
+    def apply_boxcox(self, df: DataFrame) -> DataFrame:
         c = self.config
-
-        transformed = boxcox_transform_groupwise(
+        return boxcox_transform_groupwise(
             df,
             group_col=c.group_col,
             value_col="y_clean_int",
             date_col=c.date_col,
         )
 
+    def add_series_median(self, df: DataFrame, value_col: str = "y_clean_int") -> DataFrame:
+        c = self.config
         window_spec = Window.partitionBy(c.group_col)
-        transformed = transformed.withColumn(
+        return df.withColumn(
             "series_median",
-            F.expr("percentile_approx(y_clean_int, 0.5)").over(window_spec),
+            F.expr(f"percentile_approx({value_col}, 0.5)").over(window_spec),
         )
 
-        return transformed
 
     def write_output_table(self, df: DataFrame) -> None:
         """
