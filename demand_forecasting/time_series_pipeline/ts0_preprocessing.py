@@ -12,7 +12,7 @@ from pyspark.sql.window import Window
 
 # The functions below are defined in a legacy reference folder and will be refactored after the preprocessing, diagnostics, and plotting modules are stable.
 from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
-    upsample_groupedweeklyts_spark,
+    upsample_weeklyts_groupwise,
     flag_data_prior_to_inactive_periods,
     remove_insuff_series,
     fill_dim_nulls_groupwise,
@@ -341,10 +341,10 @@ class TSPreprocessor:
 
     def fill_missing_dates(self, df_weekly: DataFrame) -> DataFrame:
         """
-        Use upsample_groupedweeklyts_spark to fill gaps in each series.
+        Use upsample_weeklyts_groupwise to fill gaps in each series.
         """
         c = self.config
-        return upsample_groupedweeklyts_spark(df_weekly, c.date_col, c.group_col)
+        return upsample_weeklyts_groupwise(df_weekly, c.date_col, c.group_col)
 
     def remove_inactive_and_insufficient(self, df_dates_filled: DataFrame) -> DataFrame:
         """

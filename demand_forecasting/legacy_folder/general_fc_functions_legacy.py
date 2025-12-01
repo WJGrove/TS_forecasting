@@ -10,7 +10,7 @@ from pyspark.sql.functions import pandas_udf, PandasUDFType
 
 # The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
 
-def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"):
+def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
 
     # Get the first and last dates for each group using aggregation
     date_ranges = df.groupBy(group_col).agg(
