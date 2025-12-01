@@ -2,7 +2,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 from datetime import datetime, timedelta
-import numpy as np
+import numpy as np, numpy.typing as npt
 from scipy.stats import boxcox
 from scipy.special import inv_boxcox
 import matplotlib.pyplot as plt
@@ -457,34 +457,40 @@ def boxcox_transform_groupwise(
         # Sort by date within group
         pdf = pdf.sort_values(by=date_col).reset_index(drop=True)
 
-        # Ensure numeric
-        y = pdf[value_col].astype("float64").values
-        n = len(y)
+        # Make y a well-typed ndarray[float64] so numpy stubs are happier
+        y: npt.NDArray[np.float64] = pdf[value_col].to_numpy(dtype="float64")
+        n = y.shape[0]
 
         transformed = np.full(n, np.nan, dtype="float64")
         lambdas = np.full(n, np.nan, dtype="float64")
         is_const = np.zeros(n, dtype=bool)
 
-        # Work only on non-null values
-        valid_mask = ~np.isnan(y)
+        # Valid = non-NaN
+        valid_mask = np.logical_not(np.isnan(y))
         y_valid = y[valid_mask]
 
         if y_valid.size == 0:
-            # All nulls: leave NaNs/defaults
+            # All nulls: leave as NaN, no lambda
             pass
+
         elif np.any(y_valid <= 0):
-            # Non-positive values → skip transform, keep original
+            # Non-positive values → cannot Box-Cox; keep original
             transformed[valid_mask] = y_valid
+
         elif np.unique(y_valid).size == 1:
-            # Constant series
+            # Constant series → keep original, flag as constant
             transformed[valid_mask] = y_valid
             is_const[valid_mask] = True
+
         else:
             # Proper Box-Cox
-            y_trans, lam = boxcox(y_valid)
+            # SciPy's stub is overly general; treat result as a generic tuple
+            bc_res = boxcox(y_valid)  # type: ignore[misc]
+            y_trans = np.asarray(bc_res[0], dtype="float64")
+            lam = float(bc_res[1])
 
             if lower_lambda_threshold < lam < upper_lambda_threshold:
-                # Near-identity lambda → don't bother transforming
+                # Near-identity lambda → don't transform
                 transformed[valid_mask] = y_valid
             else:
                 transformed[valid_mask] = y_trans
@@ -576,35 +582,35 @@ def groupwise_inv_boxcox_transform(
     original_schema: StructType = df.schema
 
     def _inv_group(pdf: pd.DataFrame) -> pd.DataFrame:
-        """
-        Per-group inverse transform in pandas.
+        # Lambda as float64 array
+        lam: npt.NDArray[np.float64] = pdf[lambda_col].to_numpy(dtype="float64")
 
-        - pdf contains all rows for a single group_col value.
-        - We read lambda_col once and apply to each requested column.
-        """
-        # Convert lambda to float64 array (NaNs where no transform)
-        lam = pdf[lambda_col].astype("float64").values
-
+        # Optional constant flag (to skip fully constant series)
         if constant_flag_col and constant_flag_col in pdf.columns:
-            const_flags = pdf[constant_flag_col].astype(bool).values
+            const_flags: npt.NDArray[np.bool_] = (
+                pdf[constant_flag_col].astype(bool).to_numpy()
+            )
         else:
             const_flags = np.zeros(len(pdf), dtype=bool)
 
-        for col in cols_to_inverse:
-            # Work in float64 for numeric stability
-            vals = pdf[col].astype("float64").values
+        # Precompute "not constant"
+        not_const: npt.NDArray[np.bool_] = np.logical_not(const_flags)
 
-            # Apply inverse only where we have both a value and a lambda
-            mask = (~np.isnan(vals)) & (~np.isnan(lam)) & (~const_flags)
+        for col in cols_to_inverse:
+            # Values on Box-Cox scale
+            vals: npt.NDArray[np.float64] = pdf[col].to_numpy(dtype="float64")
+
+            valid_vals = np.logical_not(np.isnan(vals))
+            valid_lam = np.logical_not(np.isnan(lam))
+
+            # Only inverse where we have a value, a lambda, and the row is not constant
+            mask: npt.NDArray[np.bool_] = valid_vals & valid_lam & not_const
 
             if mask.any():
-                # scipy.special.inv_boxcox handles lambda=0 as exp(x)
                 vals[mask] = inv_boxcox(vals[mask], lam[mask])
 
-            # Write back into the DataFrame
             pdf[col] = vals
 
-        # Return columns in the same order as the original Spark schema expects
         return pdf[[field.name for field in original_schema.fields]]
 
     # Use applyInPandas so Spark handles grouping + distribution
@@ -615,55 +621,3 @@ def groupwise_inv_boxcox_transform(
 
     return result_df
 
-
-# def plot_aggregated_data(spark_df, group_col1, value_col, group_col2=None):
-#     """
-#     Aggregates data in a Spark DataFrame by one or two grouping columns and plots
-#     a color-coded bar graph of the specified value column.
-
-#     Parameters:
-#     - spark_df: Spark DataFrame
-#     - group_col1: string, the first grouping column
-#     - value_col: string, the column whose values are to be aggregated and plotted
-#     - group_col2: string (optional), the second grouping column
-
-#     Output:
-#     - A color-coded bar graph titled "{value_col} by {group_col1} and {group_col2}"
-#       with a grid, and labeled axes.
-#     """
-#     # Check if the DataFrame is empty
-#     if spark_df.rdd.isEmpty():
-#         print("DataFrame is empty, cannot plot.")
-#         return  # Exit the function
-
-#     # Aggregate data
-#     if group_col2:
-#         aggregated_df = spark_df.groupBy(group_col1, group_col2).agg(
-#             F.sum(value_col).alias("sum")
-#         )
-#         plot_title = f"{value_col} by {group_col1} and {group_col2}"
-#     else:
-#         aggregated_df = spark_df.groupBy(group_col1).agg(F.sum(value_col).alias("sum"))
-#         plot_title = f"{value_col} by {group_col1}"
-
-#     # Convert to Pandas DataFrame for plotting
-#     pd_df = aggregated_df.toPandas()
-
-#     # Plotting
-#     plt.figure(figsize=(10, 6))
-#     if group_col2:
-#         # If group_col2 is provided, we use it to color-code the bars
-#         pd_df.pivot(index=group_col1, columns=group_col2, values="sum").plot(
-#             kind="bar", ax=plt.gca()
-#         )
-#     else:
-#         pd_df.plot(kind="bar", x=group_col1, y="sum", ax=plt.gca(), color="skyblue")
-
-#     plt.title(plot_title)
-#     plt.xlabel(group_col1)
-#     plt.ylabel(value_col)
-#     plt.grid(True)
-#     plt.xticks(rotation=45)
-#     plt.legend(title=group_col2 if group_col2 else "")
-#     plt.tight_layout()
-#     plt.show()
