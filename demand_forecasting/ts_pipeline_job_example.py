@@ -99,7 +99,7 @@ def main(run_plots: bool = True) -> None:
             prefixes=("customer_", "product_"),
         )
 
-        # 3.3 Volume by a single dimension over the last 52 periods
+        # 3.3 Example: Volume by a single dimension over the last 52 periods
         dim_for_volume = (
             config.product_dim_col1 or config.customer_parent_company_col
         )
@@ -113,13 +113,13 @@ def main(run_plots: bool = True) -> None:
             )
 
         # 3.4 Example: year/day-of-year profile for one dim value
-        example_dim_for_year_day = (
+        dim_for_year_day = (
             config.product_dim_col1 or config.customer_parent_company_col
         )
-        if example_dim_for_year_day and example_dim_for_year_day in df_final.columns:
+        if dim_for_year_day and dim_for_year_day in df_final.columns:
             first_val_row = (
-                df_final.select(example_dim_for_year_day)
-                .where(F.col(example_dim_for_year_day).isNotNull())
+                df_final.select(dim_for_year_day)
+                .where(F.col(dim_for_year_day).isNotNull())
                 .limit(1)
                 .collect()
             )
@@ -127,18 +127,18 @@ def main(run_plots: bool = True) -> None:
                 example_value = first_val_row[0][0]
                 print(
                     f"\n=== Year/day-of-year profile for "
-                    f"{example_dim_for_year_day} = {example_value} ==="
+                    f"{dim_for_year_day} = {example_value} ==="
                 )
 
                 year_day_df = plotter.prepare_year_day_aggregation(
                     df_final,
-                    dim_col=example_dim_for_year_day,
+                    dim_col=dim_for_year_day,
                     value_col="y_clean",
                 )
 
                 plotter.plot_year_day_lines_for_dimension(
                     year_day_df,
-                    dim_col=example_dim_for_year_day,
+                    dim_col=dim_for_year_day,
                     dim_value=example_value,
                     value_label="Sum of y_clean",
                     use_3d=False,
