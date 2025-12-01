@@ -254,7 +254,7 @@ def fill_dim_nulls_bfill_ffill(df, group_col, date_col, cols_to_fill):
 
 # The following function was reviewed on 12/01/2025. Good to go.
 # rename to include the word "clean" somewhere.
-def spark_remove_outliers(
+def groupwise_clean_flag_outliers(
     df,
     cols_for_outlier_removal,
     group_col="time_series_id",

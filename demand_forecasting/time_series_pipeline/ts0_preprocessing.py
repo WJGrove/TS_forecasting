@@ -16,7 +16,7 @@ from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     remove_data_prior_to_inactive_periods,
     remove_series_w_insuff_data,
     fill_dim_nulls_bfill_ffill,
-    spark_remove_outliers,
+    groupwise_clean_flag_outliers,
     interpolate_groupwise_numeric,
     boxcox_multi_ts_sps,
 )
@@ -385,7 +385,7 @@ class TSPreprocessor:
         Replace outliers in selected columns with NULLs.
         """
         c = self.config
-        return spark_remove_outliers(
+        return groupwise_clean_flag_outliers(
             df,
             c.cols_for_outlier_removal,
             outlier_threshold=c.outlier_threshold,
