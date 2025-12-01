@@ -559,54 +559,54 @@ def inverse_boxcox_transform(pdf):
     return pdf
 
 
-def plot_aggregated_data(spark_df, group_col1, value_col, group_col2=None):
-    """
-    Aggregates data in a Spark DataFrame by one or two grouping columns and plots
-    a color-coded bar graph of the specified value column.
+# def plot_aggregated_data(spark_df, group_col1, value_col, group_col2=None):
+#     """
+#     Aggregates data in a Spark DataFrame by one or two grouping columns and plots
+#     a color-coded bar graph of the specified value column.
 
-    Parameters:
-    - spark_df: Spark DataFrame
-    - group_col1: string, the first grouping column
-    - value_col: string, the column whose values are to be aggregated and plotted
-    - group_col2: string (optional), the second grouping column
+#     Parameters:
+#     - spark_df: Spark DataFrame
+#     - group_col1: string, the first grouping column
+#     - value_col: string, the column whose values are to be aggregated and plotted
+#     - group_col2: string (optional), the second grouping column
 
-    Output:
-    - A color-coded bar graph titled "{value_col} by {group_col1} and {group_col2}"
-      with a grid, and labeled axes.
-    """
-    # Check if the DataFrame is empty
-    if spark_df.rdd.isEmpty():
-        print("DataFrame is empty, cannot plot.")
-        return  # Exit the function
+#     Output:
+#     - A color-coded bar graph titled "{value_col} by {group_col1} and {group_col2}"
+#       with a grid, and labeled axes.
+#     """
+#     # Check if the DataFrame is empty
+#     if spark_df.rdd.isEmpty():
+#         print("DataFrame is empty, cannot plot.")
+#         return  # Exit the function
 
-    # Aggregate data
-    if group_col2:
-        aggregated_df = spark_df.groupBy(group_col1, group_col2).agg(
-            F.sum(value_col).alias("sum")
-        )
-        plot_title = f"{value_col} by {group_col1} and {group_col2}"
-    else:
-        aggregated_df = spark_df.groupBy(group_col1).agg(F.sum(value_col).alias("sum"))
-        plot_title = f"{value_col} by {group_col1}"
+#     # Aggregate data
+#     if group_col2:
+#         aggregated_df = spark_df.groupBy(group_col1, group_col2).agg(
+#             F.sum(value_col).alias("sum")
+#         )
+#         plot_title = f"{value_col} by {group_col1} and {group_col2}"
+#     else:
+#         aggregated_df = spark_df.groupBy(group_col1).agg(F.sum(value_col).alias("sum"))
+#         plot_title = f"{value_col} by {group_col1}"
 
-    # Convert to Pandas DataFrame for plotting
-    pd_df = aggregated_df.toPandas()
+#     # Convert to Pandas DataFrame for plotting
+#     pd_df = aggregated_df.toPandas()
 
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    if group_col2:
-        # If group_col2 is provided, we use it to color-code the bars
-        pd_df.pivot(index=group_col1, columns=group_col2, values="sum").plot(
-            kind="bar", ax=plt.gca()
-        )
-    else:
-        pd_df.plot(kind="bar", x=group_col1, y="sum", ax=plt.gca(), color="skyblue")
+#     # Plotting
+#     plt.figure(figsize=(10, 6))
+#     if group_col2:
+#         # If group_col2 is provided, we use it to color-code the bars
+#         pd_df.pivot(index=group_col1, columns=group_col2, values="sum").plot(
+#             kind="bar", ax=plt.gca()
+#         )
+#     else:
+#         pd_df.plot(kind="bar", x=group_col1, y="sum", ax=plt.gca(), color="skyblue")
 
-    plt.title(plot_title)
-    plt.xlabel(group_col1)
-    plt.ylabel(value_col)
-    plt.grid(True)
-    plt.xticks(rotation=45)
-    plt.legend(title=group_col2 if group_col2 else "")
-    plt.tight_layout()
-    plt.show()
+#     plt.title(plot_title)
+#     plt.xlabel(group_col1)
+#     plt.ylabel(value_col)
+#     plt.grid(True)
+#     plt.xticks(rotation=45)
+#     plt.legend(title=group_col2 if group_col2 else "")
+#     plt.tight_layout()
+#     plt.show()
