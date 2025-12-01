@@ -179,8 +179,8 @@ def remove_data_prior_to_inactive_periods(
         "max_rolling_period_sum_inactive",
         "max_inactive_date",
     )
-
-    return df
+    df_inact_rem = df
+    return df_inact_rem
 
 
 # The following function was reviewed on 12/01/2025. Good to go.
@@ -330,95 +330,83 @@ def spark_remove_outliers(
     return df
 
 
-# The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
 
 def spark_pandas_interpolate_convert(
-    df, group_col, numerical_cols, date_col, interpolation_method="linear", order=3
-):
+    df: DataFrame,
+    group_col: str,
+    numerical_cols: list[str],
+    date_col: str,
+    interpolation_method: str = "linear",
+    order: int = 3,
+) -> DataFrame:
     """
-    Interpolates specified columns in a Spark DataFrame for each group, identified by group_col,
-    after sorting each group by the date_col. Retains all columns from the input DataFrame.
+    Interpolates specified numeric columns in a Spark DataFrame for each group,
+    identified by group_col, after sorting each group by date_col.
 
-    :param df: Spark DataFrame to be interpolated.
-    :param group_col: Column name that identifies the group.
-    :param numerical_cols: List of column names to interpolate.
-    :param date_col: Column name by which to sort within each group.
-    :param interpolation_method: Method of interpolation (default is 'linear').
-    :param order: Order of interpolation for spline or polynomial methods (default is 2).
-    :return: Spark DataFrame with interpolated values and all original columns.
+    - Keeps all original columns.
+    - Adds one new column per numeric col with "_int" suffix containing the
+      interpolated values (float64).
+
+    Implementation uses groupBy(...).applyInPandas(...) so interpolation is done
+    per-group in parallel, without converting the entire DataFrame to pandas.
     """
-    # Convert Spark DataFrame to Pandas DataFrame
-    pandas_df = df.toPandas()
 
-    # Ensure numerical columns are of float64 type for interpolation
-    pandas_df[numerical_cols] = pandas_df[numerical_cols].astype("float64")
+    # Basic validation
+    missing = [c for c in numerical_cols if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Columns {missing} not found in DataFrame for interpolation."
+        )
 
-    # Define a function to interpolate within each group
-    def interpolate_group(group):
-        group = group.sort_values(by=date_col).reset_index(drop=True)
+    if group_col not in df.columns:
+        raise ValueError(f"group_col '{group_col}' not found in DataFrame.")
+
+    if date_col not in df.columns:
+        raise ValueError(f"date_col '{date_col}' not found in DataFrame.")
+
+    # Build the return schema: original fields + one DoubleType field per "<col>_int"
+    original_schema: StructType = df.schema
+    int_fields = [
+        StructField(f"{col}_int", DoubleType(), nullable=True)
+        for col in numerical_cols
+    ]
+    result_schema = StructType(list(original_schema.fields) + int_fields)
+
+    # Define the per-group interpolation function in pandas
+    def _interpolate_group(pdf: pd.DataFrame) -> pd.DataFrame:
+        # Sort by date within each group; keep all columns
+        pdf = pdf.sort_values(by=date_col).reset_index(drop=True)
+
+        # Ensure numeric columns are float64 for interpolation
+        pdf[numerical_cols] = pdf[numerical_cols].astype("float64")
+
         for col in numerical_cols:
-            # Interpolate and create a new column with "_int" suffix for the interpolated values
-            if interpolation_method in ["spline", "polynomial"]:
-                group[f"{col}_int"] = (
-                    group[col]
-                    .interpolate(method=interpolation_method, order=order)
+            series = pdf[col]
+            if interpolation_method in ("spline", "polynomial"):
+                interp = (
+                    series.interpolate(
+                        method=interpolation_method,
+                        order=order,
+                    )
                     .ffill()
                     .bfill()
                 )
             else:
-                group[f"{col}_int"] = (
-                    group[col].interpolate(method=interpolation_method).ffill().bfill()
-                )
-        return group
+                interp = series.interpolate(method=interpolation_method).ffill().bfill()
 
-    # Apply interpolation for each group
-    interpolated_df = (
-        pandas_df.groupby(group_col).apply(interpolate_group).reset_index(drop=True)
+            pdf[f"{col}_int"] = interp
+
+        # Ensure column order matches result_schema
+        return pdf[[field.name for field in result_schema.fields]]
+
+    # Apply the interpolation per group
+    interpolated_df = df.groupBy(group_col).applyInPandas(
+        _interpolate_group,
+        schema=result_schema,
     )
 
-    # Convert back to Spark DataFrame
-    spark = SparkSession.builder.getOrCreate()
-    df_interp = spark.createDataFrame(interpolated_df)
+    return interpolated_df
 
-    return df_interp
-
-
-# def upsample_monthlyts_to_weeklyts_spark(df, date_col="ds"):
-#     """
-#     Note: This function is written using Sunday as an example, but it doesn't
-#       matter what day of the week the series is on.
-
-#     This function upsamples a REGULAR weekly time series DataFrame to include all Sundays between the first and last dates.
-
-#     Parameters:
-#     df (DataFrame): The input Spark DataFrame with a date column.
-#     date_col (str): The name of the date column in `df` to be used for upsampling.
-
-#     Returns:
-#     DataFrame: A new DataFrame with weekly frequency on Sundays.
-#     """
-#     # Ensure that df has only one row per date
-#     df = df.dropDuplicates([date_col])
-#     # create a list of original cols to keep
-#     original_cols_to_select = [col for col in df.columns if col not in [date_col]]
-
-#     # Create a DataFrame with a range of Sundays between min_date and max_date
-#     all_weeks_df = df.select(
-#         F.explode(
-#             F.sequence(
-#                 F.to_date(F.lit(F.min(date_col))),
-#                 F.to_date(F.lit(F.max(date_col))),
-#                 F.expr("interval 7 days"),  # Increment by 7 days to get only Sundays
-#             )
-#         ).alias("all_weeks")
-#     )
-
-#     # Perform a left join with the original DataFrame to include all Sundays
-#     expanded_df = all_weeks_df.join(
-#         df, all_weeks_df.all_weeks == df[date_col], "left"
-#     ).select("all_weeks", *original_cols_to_select)
-#     # Return the expanded DataFrame with weekly frequency
-#     return expanded_df.orderBy("all_weeks")
 
 
 # -------------------------------------------------------------------------------
