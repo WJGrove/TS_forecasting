@@ -4,12 +4,14 @@ from pyspark.sql.window import Window
 from datetime import datetime, timedelta
 import numpy as np
 from scipy.stats import boxcox
+from scipy.special import inv_boxcox
 import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
 
 # The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
+
 
 def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
 
@@ -28,6 +30,7 @@ def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
     df = df.orderBy(group_col, date_col)
 
     return df
+
 
 def flag_data_prior_to_inactive_periods(
     df: DataFrame,
@@ -93,9 +96,7 @@ def flag_data_prior_to_inactive_periods(
     maxdate_window = Window.partitionBy(group_col)
     df = df.withColumn(
         "series_max_date", F.max(F.col(date_col)).over(maxdate_window)
-    ).withColumn(
-        "series_min_date", F.min(F.col(date_col)).over(maxdate_window)
-    )
+    ).withColumn("series_min_date", F.min(F.col(date_col)).over(maxdate_window))
 
     # 3) Inactivity indicator (zeros or NULLs)
     df = df.withColumn(
@@ -157,8 +158,7 @@ def flag_data_prior_to_inactive_periods(
     df = df.withColumn(
         "precedes_inactive_period",
         F.when(
-            F.col("iswas_inactive")
-            & (F.col(date_col) <= F.col("max_inactive_date")),
+            F.col("iswas_inactive") & (F.col(date_col) <= F.col("max_inactive_date")),
             F.lit(True),
         ).otherwise(F.lit(False)),
     )
@@ -185,6 +185,7 @@ def flag_data_prior_to_inactive_periods(
 
 
 # The following function was reviewed on 12/01/2025. Good to go.
+
 
 def remove_insuff_series(df, group_col, insufficient_data_threshold, value_col):
     """
@@ -223,6 +224,7 @@ def remove_insuff_series(df, group_col, insufficient_data_threshold, value_col):
 
 # The following function was reviewed on 12/01/2025. Good to go.
 
+
 def fill_dim_nulls_groupwise(df, group_col, date_col, cols_to_fill):
     """
     Efficiently fill null values in specified columns using both backward fill and forward fill methods.
@@ -252,6 +254,7 @@ def fill_dim_nulls_groupwise(df, group_col, date_col, cols_to_fill):
         df = df.withColumn(col, F.coalesce(bfill_col, ffill_col, F.col(col)))
 
     return df
+
 
 # The following function was reviewed on 12/01/2025. Good to go.
 # rename to include the word "clean" somewhere.
@@ -331,7 +334,6 @@ def groupwise_clean_flag_outliers(
     return df
 
 
-
 def interpolate_groupwise_numeric(
     df: DataFrame,
     group_col: str,
@@ -355,9 +357,7 @@ def interpolate_groupwise_numeric(
     # Basic validation
     missing = [c for c in numerical_cols if c not in df.columns]
     if missing:
-        raise ValueError(
-            f"Columns {missing} not found in DataFrame for interpolation."
-        )
+        raise ValueError(f"Columns {missing} not found in DataFrame for interpolation.")
 
     if group_col not in df.columns:
         raise ValueError(f"group_col '{group_col}' not found in DataFrame.")
@@ -368,8 +368,7 @@ def interpolate_groupwise_numeric(
     # Build the return schema: original fields + one DoubleType field per "<col>_int"
     original_schema: StructType = df.schema
     int_fields = [
-        StructField(f"{col}_int", DoubleType(), nullable=True)
-        for col in numerical_cols
+        StructField(f"{col}_int", DoubleType(), nullable=True) for col in numerical_cols
     ]
     result_schema = StructType(list(original_schema.fields) + int_fields)
 
@@ -407,7 +406,6 @@ def interpolate_groupwise_numeric(
     )
 
     return interpolated_df
-
 
 
 # -------------------------------------------------------------------------------
@@ -505,51 +503,117 @@ def boxcox_transform_groupwise(
     )
     return result_df
 
+
 # When you forecast a transformed series, you need to inverse transform the predictions and the prediction interval endpoints.
 # This means you'll need to join the lambda info to the forecast data on the group_col.
 
-# The following function must be refactored
-# It relies on a global variable and schema
-# needs newer syntax for clarity (old style grouped map pandas udf currently used)
-# it's also detached from the boxcox_transform_groupwise function above, which writes series lambda info to a dataframe
-#
-#A more coherent design would be:
+import numpy as np
+import pandas as pd
 
-#   1. boxcox_transform_groupwise writes:
+from scipy.special import inv_boxcox  # make sure scipy is installed
+from pyspark.sql import DataFrame
+from pyspark.sql.types import StructType
 
-#       -value_col → transformed (or original if not transformed).
 
-#       -lambda_col (e.g. "boxcox_lambda") with the fitted lambda or None.
+def groupwise_inv_boxcox_transform(
+    df: DataFrame,
+    group_col: str = "time_series_id",
+    lambda_col: str = "series_lambda",
+    cols_to_inverse: list[str] | None = None,
+    constant_flag_col: str | None = "is_constant",
+) -> DataFrame:
+    """
+    Apply the inverse Box-Cox transform per series, using the lambda stored in `lambda_col`.
 
-#   2. inverse_boxcox uses a UDF or pandas UDF that reads:
+    Intended usage:
+      - `df` contains:
+          * one or more forecast columns on Box-Cox scale (e.g. y_hat_bc, y_hat_bc_lower, y_hat_bc_upper)
+          * a per-row lambda column (e.g. 'series_lambda') produced by the forward
+            Box-Cox step (one lambda per series).
+      - For each column in `cols_to_inverse`:
+          * If both the value and lambda are non-null, apply inv_boxcox(value, lambda).
+          * Otherwise, leave the value unchanged.
 
-#       -y_hat and lambda_col from the same row.
+    This function modifies the specified columns **in place** and returns a DataFrame
+    with the same schema as the input.
 
-#       -Applies inv_boxcox when lambda_col is not null.
-# That way we don't need global dictionaries and the logic is clearer.
+    Parameters
+    ----------
+    df : DataFrame
+        Spark DataFrame with forecast columns and a lambda column.
+    group_col : str
+        Name of the column that identifies a time series (e.g. 'time_series_id').
+    lambda_col : str
+        Name of the column containing the Box-Cox lambda for each row (e.g. 'series_lambda').
+    cols_to_inverse : list[str]
+        List of column names (on Box-Cox scale) to inverse transform back to original units.
 
-@pandas_udf(schema, PandasUDFType.GROUPED_MAP)
-def groupwise_inv_boxcox_transform(pdf):
-    time_series_id = pdf["time_series_id"].iloc[
-        0
-    ]  # Assuming time_series_id is uniform within each group
-    lam_info = lambda_values_dict.get(
-        time_series_id, {"fitted_lambda": None, "is_transformed": False}
+    Returns
+    -------
+    DataFrame
+        DataFrame with the same schema as `df`, with the specified columns inverse-transformed
+        where a valid lambda is present.
+    """
+    # ---------- Defensive checks ----------
+    if cols_to_inverse is None or len(cols_to_inverse) == 0:
+        raise ValueError(
+            "cols_to_inverse must be a non-empty list of column names to inverse-transform."
+        )
+
+    missing_required = [c for c in (group_col, lambda_col) if c not in df.columns]
+    if missing_required:
+        raise ValueError(
+            f"Required column(s) {missing_required} not found in DataFrame."
+        )
+
+    missing_inverse_cols = [c for c in cols_to_inverse if c not in df.columns]
+    if missing_inverse_cols:
+        raise ValueError(
+            f"Columns specified in cols_to_inverse not found in DataFrame: {missing_inverse_cols}"
+        )
+
+    # We'll preserve the exact schema and column order
+    original_schema: StructType = df.schema
+
+    def _inv_group(pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Per-group inverse transform in pandas.
+
+        - pdf contains all rows for a single group_col value.
+        - We read lambda_col once and apply to each requested column.
+        """
+        # Convert lambda to float64 array (NaNs where no transform)
+        lam = pdf[lambda_col].astype("float64").values
+
+        if constant_flag_col and constant_flag_col in pdf.columns:
+            const_flags = pdf[constant_flag_col].astype(bool).values
+        else:
+            const_flags = np.zeros(len(pdf), dtype=bool)
+
+        for col in cols_to_inverse:
+            # Work in float64 for numeric stability
+            vals = pdf[col].astype("float64").values
+
+            # Apply inverse only where we have both a value and a lambda
+            mask = (~np.isnan(vals)) & (~np.isnan(lam)) & (~const_flags)
+
+            if mask.any():
+                # scipy.special.inv_boxcox handles lambda=0 as exp(x)
+                vals[mask] = inv_boxcox(vals[mask], lam[mask])
+
+            # Write back into the DataFrame
+            pdf[col] = vals
+
+        # Return columns in the same order as the original Spark schema expects
+        return pdf[[field.name for field in original_schema.fields]]
+
+    # Use applyInPandas so Spark handles grouping + distribution
+    result_df = df.groupBy(group_col).applyInPandas(
+        _inv_group,
+        schema=original_schema,
     )
 
-    if lam_info["is_transformed"]:
-        lam = lam_info["fitted_lambda"]
-        pdf["y_hat"] = pdf["y_hat"].apply(
-            lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x
-        )
-        pdf["y_hat_upper"] = pdf["y_hat_upper"].apply(
-            lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x
-        )
-        pdf["y_hat_lower"] = pdf["y_hat_lower"].apply(
-            lambda x: inv_boxcox(x, lam) if pd.notnull(x) else x
-        )
-
-    return pdf
+    return result_df
 
 
 # def plot_aggregated_data(spark_df, group_col1, value_col, group_col2=None):
