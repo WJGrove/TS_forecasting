@@ -504,7 +504,7 @@ def boxcox_transform_groupwise(
 # That way we don't need global dictionaries and the logic is clearer.
 
 @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
-def inverse_boxcox_transform(pdf):
+def groupwise_inv_boxcox_transform(pdf):
     time_series_id = pdf["time_series_id"].iloc[
         0
     ]  # Assuming time_series_id is uniform within each group
