@@ -18,7 +18,7 @@ from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     fill_dim_nulls_groupwise,
     groupwise_clean_flag_outliers,
     interpolate_groupwise_numeric,
-    boxcox_multi_ts_sps,
+    boxcox_transform_groupwise,
 )
 
 
@@ -435,7 +435,7 @@ class TSPreprocessor:
         """
         c = self.config
 
-        transformed = boxcox_multi_ts_sps(
+        transformed = boxcox_transform_groupwise(
             df,
             group_col=c.group_col,
             value_col="y_clean_int",

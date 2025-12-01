@@ -422,7 +422,7 @@ def interpolate_groupwise_numeric(
 # The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
 # information about which series were transformed and their lambda values needs to be stored for inverse transformation as well as reporting later.
 # make spark an explicit dependency argument or use SparkSession.getActiveSession()
-def boxcox_multi_ts_sps(
+def boxcox_transform_groupwise(
     df,
     group_col="time_series_id",
     date_col="ds",
@@ -486,11 +486,11 @@ def boxcox_multi_ts_sps(
 # The following function must be refactored
 # It relies on a global variable and schema
 # needs newer syntax for clarity (old style grouped map pandas udf currently used)
-# it's also detached from the boxcox_multi_ts_sps function above, which writes series lambda info to a dataframe
+# it's also detached from the boxcox_transform_groupwise function above, which writes series lambda info to a dataframe
 #
 #A more coherent design would be:
 
-#   1. boxcox_multi_ts_sps writes:
+#   1. boxcox_transform_groupwise writes:
 
 #       -value_col → transformed (or original if not transformed).
 
