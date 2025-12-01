@@ -7,6 +7,7 @@ from scipy.stats import boxcox
 import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
+from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
 
 # The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
 
@@ -423,65 +424,86 @@ def interpolate_groupwise_numeric(
 # information about which series were transformed and their lambda values needs to be stored for inverse transformation as well as reporting later.
 # make spark an explicit dependency argument or use SparkSession.getActiveSession()
 def boxcox_transform_groupwise(
-    df,
-    group_col="time_series_id",
-    date_col="ds",
-    value_col="y_clean_int",
-    lower_lambda_threshold=0.9,
-    upper_lambda_threshold=1.1,
-):
+    df: DataFrame,
+    group_col: str = "time_series_id",
+    date_col: str = "ds",
+    value_col: str = "y_clean_int",
+    lower_lambda_threshold: float = 0.9,
+    upper_lambda_threshold: float = 1.1,
+) -> DataFrame:
     """
-    Transforms the specified value column in a Spark DataFrame using the Box-Cox transformation if the estimated
-    lambda value is outside a specified threshold range. This function is designed for grouped time series data,
-    where each group is identified by a unique value in the group_col. The transformation aims to stabilize variance
-    and make the data more closely resemble a normal distribution.
+    Apply Box-Cox per series (group_col) to value_col, in a scalable way.
+
+    - Operates per-group using groupBy(...).applyInPandas(...)
+    - Adds:
+        * `<value_col>_transformed` : transformed or original values
+        * `series_lambda`           : fitted lambda where transform applied, else null
+        * `is_constant`             : True if series is constant (and left untransformed)
     """
-    transformed_df = df.toPandas()
 
-    # Initialize new columns for transformed values, lambda values, and constant flag
-    transformed_column_name = f"{value_col}_transformed"
-    transformed_df[transformed_column_name] = np.nan
-    transformed_df["series_lambda"] = np.nan
-    transformed_df["is_constant"] = False
+    # Basic validation
+    for col in (group_col, date_col, value_col):
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    # Sort DataFrame by group and date for grouped operations
-    transformed_df.sort_values(by=[group_col, date_col], inplace=True)
+    # Build output schema: all original fields + 3 new fields
+    original_schema: StructType = df.schema
+    new_fields = [
+        StructField(f"{value_col}_transformed", DoubleType(), nullable=True),
+        StructField("series_lambda", DoubleType(), nullable=True),
+        StructField("is_constant", BooleanType(), nullable=True),
+    ]
+    result_schema = StructType(list(original_schema.fields) + new_fields)
 
-    # Loop through each group to apply Box-Cox where needed
-    for group_key, group in transformed_df.groupby(group_col):
-        y = group[value_col].values
+    def _boxcox_group(pdf: pd.DataFrame) -> pd.DataFrame:
+        # Sort by date within group
+        pdf = pdf.sort_values(by=date_col).reset_index(drop=True)
 
-        # Skip groups with non-positive values
-        if any(y <= 0):
-            print(f"Skipping {group_col} {group_key} due to non-positive values.")
-            transformed_df.loc[group.index, transformed_column_name] = (
-                y  # No transformation
-            )
-            continue
+        # Ensure numeric
+        y = pdf[value_col].astype("float64").values
+        n = len(y)
 
-        # Skip groups with constant values and set 'is_constant' flag
-        if len(np.unique(y)) == 1:
-            # print(f"Skipping {group_col} {group_key} due to constant values. Value: {y[0]}, Length: {len(y)}")
-            transformed_df.loc[group.index, transformed_column_name] = y
-            transformed_df.loc[group.index, "is_constant"] = True
-            continue
+        transformed = np.full(n, np.nan, dtype="float64")
+        lambdas = np.full(n, np.nan, dtype="float64")
+        is_const = np.zeros(n, dtype=bool)
 
-        # Estimate the Box-Cox lambda for the group
-        transformed_y, fitted_lambda = boxcox(y)
+        # Work only on non-null values
+        valid_mask = ~np.isnan(y)
+        y_valid = y[valid_mask]
 
-        # Determine if transformation should be applied
-        if lower_lambda_threshold < fitted_lambda < upper_lambda_threshold:
-            # Do not transform if lambda is within the threshold
-            transformed_df.loc[group.index, transformed_column_name] = y
+        if y_valid.size == 0:
+            # All nulls: leave NaNs/defaults
+            pass
+        elif np.any(y_valid <= 0):
+            # Non-positive values → skip transform, keep original
+            transformed[valid_mask] = y_valid
+        elif np.unique(y_valid).size == 1:
+            # Constant series
+            transformed[valid_mask] = y_valid
+            is_const[valid_mask] = True
         else:
-            # Apply transformation and record lambda
-            transformed_df.loc[group.index, transformed_column_name] = transformed_y
-            transformed_df.loc[group.index, "series_lambda"] = fitted_lambda
+            # Proper Box-Cox
+            y_trans, lam = boxcox(y_valid)
 
-    # Convert back to Spark DataFrame
-    transformed_spark_df = spark.createDataFrame(transformed_df)
+            if lower_lambda_threshold < lam < upper_lambda_threshold:
+                # Near-identity lambda → don't bother transforming
+                transformed[valid_mask] = y_valid
+            else:
+                transformed[valid_mask] = y_trans
+                lambdas[valid_mask] = lam
 
-    return transformed_spark_df
+        pdf[f"{value_col}_transformed"] = transformed
+        pdf["series_lambda"] = lambdas
+        pdf["is_constant"] = is_const
+
+        # Enforce column order to match result_schema
+        return pdf[[field.name for field in result_schema.fields]]
+
+    result_df = df.groupBy(group_col).applyInPandas(
+        _boxcox_group,
+        schema=result_schema,
+    )
+    return result_df
 
 # The following function must be refactored
 # It relies on a global variable and schema
