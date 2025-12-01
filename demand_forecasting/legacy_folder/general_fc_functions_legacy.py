@@ -403,52 +403,55 @@ def spark_pandas_interpolate_convert(
     return df_interp
 
 
-def upsample_monthlyts_to_weeklyts_spark(df, date_col="ds"):
-    """
-    Note: This function is written using Sunday as an example, but it doesn't
-      matter what day of the week the series is on.
+# def upsample_monthlyts_to_weeklyts_spark(df, date_col="ds"):
+#     """
+#     Note: This function is written using Sunday as an example, but it doesn't
+#       matter what day of the week the series is on.
 
-    This function upsamples a REGULAR weekly time series DataFrame to include all Sundays between the first and last dates.
+#     This function upsamples a REGULAR weekly time series DataFrame to include all Sundays between the first and last dates.
 
-    Parameters:
-    df (DataFrame): The input Spark DataFrame with a date column.
-    date_col (str): The name of the date column in `df` to be used for upsampling.
+#     Parameters:
+#     df (DataFrame): The input Spark DataFrame with a date column.
+#     date_col (str): The name of the date column in `df` to be used for upsampling.
 
-    Returns:
-    DataFrame: A new DataFrame with weekly frequency on Sundays.
-    """
-    # Ensure that df has only one row per date
-    df = df.dropDuplicates([date_col])
-    # create a list of original cols to keep
-    original_cols_to_select = [col for col in df.columns if col not in [date_col]]
+#     Returns:
+#     DataFrame: A new DataFrame with weekly frequency on Sundays.
+#     """
+#     # Ensure that df has only one row per date
+#     df = df.dropDuplicates([date_col])
+#     # create a list of original cols to keep
+#     original_cols_to_select = [col for col in df.columns if col not in [date_col]]
 
-    # Create a DataFrame with a range of Sundays between min_date and max_date
-    all_weeks_df = df.select(
-        F.explode(
-            F.sequence(
-                F.to_date(F.lit(F.min(date_col))),
-                F.to_date(F.lit(F.max(date_col))),
-                F.expr("interval 7 days"),  # Increment by 7 days to get only Sundays
-            )
-        ).alias("all_weeks")
-    )
+#     # Create a DataFrame with a range of Sundays between min_date and max_date
+#     all_weeks_df = df.select(
+#         F.explode(
+#             F.sequence(
+#                 F.to_date(F.lit(F.min(date_col))),
+#                 F.to_date(F.lit(F.max(date_col))),
+#                 F.expr("interval 7 days"),  # Increment by 7 days to get only Sundays
+#             )
+#         ).alias("all_weeks")
+#     )
 
-    # Perform a left join with the original DataFrame to include all Sundays
-    expanded_df = all_weeks_df.join(
-        df, all_weeks_df.all_weeks == df[date_col], "left"
-    ).select("all_weeks", *original_cols_to_select)
-    # Return the expanded DataFrame with weekly frequency
-    return expanded_df.orderBy("all_weeks")
+#     # Perform a left join with the original DataFrame to include all Sundays
+#     expanded_df = all_weeks_df.join(
+#         df, all_weeks_df.all_weeks == df[date_col], "left"
+#     ).select("all_weeks", *original_cols_to_select)
+#     # Return the expanded DataFrame with weekly frequency
+#     return expanded_df.orderBy("all_weeks")
 
 
 # -------------------------------------------------------------------------------
-# # Augmented Dickey-Fuller test
+# # FUTURE FUNCTIONS TO CONSIDER ADDING
+# -------------------------------------------------------------------------------
+# # I probably need a function for the Augmented Dickey-Fuller test
 
 # # INVESTIGATE LEVENE'S TEST AND THE ARCH TEST AS POSSIBLES FOR
 # # SKEDASTICITY TESTING
-# # def test_heteroskedasticity
 # -------------------------------------------------------------------------------
 
+
+# The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
 
 def boxcox_multi_ts_sps(
     df,
