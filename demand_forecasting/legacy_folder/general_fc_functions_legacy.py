@@ -28,7 +28,7 @@ def upsample_groupedweeklyts_spark(df, date_col="ds", group_col="time_series_id"
 
     return df
 
-def remove_data_prior_to_inactive_periods(
+def flag_data_prior_to_inactive_periods(
     df: DataFrame,
     value_col: str = "y",
     date_col: str = "ds",

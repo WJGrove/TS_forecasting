@@ -13,7 +13,7 @@ from pyspark.sql.window import Window
 # The functions below are defined in a legacy reference folder and will be refactored after the preprocessing, diagnostics, and plotting modules are stable.
 from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     upsample_groupedweeklyts_spark,
-    remove_data_prior_to_inactive_periods,
+    flag_data_prior_to_inactive_periods,
     remove_insuff_series,
     fill_dim_nulls_groupwise,
     groupwise_clean_flag_outliers,
@@ -352,7 +352,7 @@ class TSPreprocessor:
         """
         c = self.config
 
-        df_inact_rem = remove_data_prior_to_inactive_periods(
+        df_inact_rem = flag_data_prior_to_inactive_periods(
             df_dates_filled,
             c.value_col,
             c.date_col,
