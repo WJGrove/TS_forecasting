@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
-
+from typing import Literal
 
 
 def upsample_ts_groupwise(

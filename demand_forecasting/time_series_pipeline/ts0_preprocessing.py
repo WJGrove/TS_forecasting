@@ -372,8 +372,9 @@ class TSPreprocessor:
         back to the original data.
         """
         c = self.config
-        gran = c.time_granularity.lower()
 
+        gran = c.time_granularity.lower()
+        
         return upsample_ts_groupwise(
             df_period,
             date_col=c.date_col,
