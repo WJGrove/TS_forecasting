@@ -501,3 +501,8 @@ class TSForecaster:
         )
 
         return out
+    def _forecast_short_naive(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Short-series naive strategy: reuse the generic naive forecaster.
+        """
+        return self._forecast_naive_one_series(series_id, pdf)
