@@ -213,6 +213,24 @@ class TSForecaster:
 
         return pd.concat(results, ignore_index=True)
 
+
+    def _forecast_short_series_panel(self, df_short: pd.DataFrame) -> pd.DataFrame:
+        """
+        Loop over short series and apply a simpler fallback forecast.
+        """
+        c = self.config
+        results: list[pd.DataFrame] = []
+
+        for series_id, pdf in df_short.groupby(c.group_col):
+            fcst = self._forecast_short_one_series(series_id, pdf)
+            results.append(fcst)
+
+        if not results:
+            return pd.DataFrame(columns=[c.group_col, c.date_col, c.target_col])
+
+        return pd.concat(results, ignore_index=True)
+
+    # ---------- Internal: series-level ----------
     def _forecast_long_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
         Forecast a single 'long' series using STL decomposition + ExponentialSmoothing.
@@ -361,22 +379,6 @@ class TSForecaster:
         )
 
         return out
-
-    def _forecast_short_series_panel(self, df_short: pd.DataFrame) -> pd.DataFrame:
-        """
-        Loop over short series and apply a simpler fallback forecast.
-        """
-        c = self.config
-        results: list[pd.DataFrame] = []
-
-        for series_id, pdf in df_short.groupby(c.group_col):
-            fcst = self._forecast_short_one_series(series_id, pdf)
-            results.append(fcst)
-
-        if not results:
-            return pd.DataFrame(columns=[c.group_col, c.date_col, c.target_col])
-
-        return pd.concat(results, ignore_index=True)
 
     def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         if self.config.short_series_strategy == "comp_based":
