@@ -475,3 +475,6 @@ class TSPreprocessor:
             SELECT * FROM global_temp.transformed_df_with_update_date
             """
         )
+
+        
+# Later we can add some partitioning options
