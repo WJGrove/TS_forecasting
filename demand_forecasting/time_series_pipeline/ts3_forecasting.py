@@ -212,46 +212,46 @@ class TSForecaster:
         return self._forecast_short_naive(series_id, pdf)
 
 
-    def compute_wape(
-        df_actual: pd.DataFrame,
-        df_forecast: pd.DataFrame,
-        group_col: str,
-        date_col: str,
-        target_col: str,
-        forecast_col: str,
-    ) -> float:
-        """
-        Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
+def compute_wape(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str,
+) -> float:
+    """
+    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
 
-        WAPE = sum(|y - y_hat|) / sum(y)
+    WAPE = sum(|y - y_hat|) / sum(y)
 
-        Both dataframes should have (group_col, date_col) keys; this function will
-        join them on those keys and compute a single global WAPE.
-        """
-        merged = df_actual[[group_col, date_col, target_col]].merge(
-            df_forecast[[group_col, date_col, forecast_col]],
-            on=[group_col, date_col],
-            how="inner",
-            suffixes=("_actual", "_forecast"),
+    Both dataframes should have (group_col, date_col) keys; this function will
+    join them on those keys and compute a single global WAPE.
+    """
+    merged = df_actual[[group_col, date_col, target_col]].merge(
+        df_forecast[[group_col, date_col, forecast_col]],
+        on=[group_col, date_col],
+        how="inner",
+        suffixes=("_actual", "_forecast"),
+    )
+
+    if merged.empty:
+        raise ValueError(
+            "No overlapping rows between actuals and forecasts to compute WAPE."
         )
 
-        if merged.empty:
-            raise ValueError(
-                "No overlapping rows between actuals and forecasts to compute WAPE."
-            )
+    num = (
+        (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
+        .abs()
+        .sum()
+    )
+    denom = merged[f"{target_col}_actual"].abs().sum()
 
-        num = (
-            (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
-            .abs()
-            .sum()
-        )
-        denom = merged[f"{target_col}_actual"].abs().sum()
+    if denom == 0:
+        # Degenerate case: no volume at all
+        return float("nan")
 
-        if denom == 0:
-            # Degenerate case: no volume at all
-            return float("nan")
-
-        return float(num / denom)
+    return float(num / denom)
 
 
 def train_test_split_panel(
