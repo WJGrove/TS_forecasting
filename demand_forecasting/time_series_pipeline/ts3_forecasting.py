@@ -15,7 +15,10 @@ class TSForecastConfig:
     time_granularity: TimeGranularity = "week"
     seasonal_period: int = 52
     min_history_for_exp_smoothing: int = 2 * 52  # e.g. 2 years of weekly data
-    # add something here for test/train set delineation...
+
+    # train/test split configuration
+    test_set_length: int = 26  # in periods; used for validation
+    test_end_anchor: Literal["calendar", "max_ds"] = "max_ds" # this defines how we pick test set end date
 
     stats_alpha: float = 0.05 # probability of type 1 error ("false positive") in statistical tests. This gives 95% confidence level.
     smoothing_alpha: float | None = None  # smoothing param; if None, estimate
@@ -33,7 +36,13 @@ class TSForecastConfig:
 
     forecast_transformed_target: bool = False
 
+    # short series/comparison group config    
+    comp_group_default_yoy: float = 0.02  # default for groups with no history
+    comp_group_cols: list[str] = field(default_factory=list)  # columns defining comparison groups (e.g., [parent_company, item_id, market])
+
+    # evaluation/QC
     baseline_method: BaselineMethod = "seasonal_naive"
+    fc_ci_outlier_threshold: float = 3.0 # to handle extreme outliers in forecast confidence intervals
 
     def __post_init__(self):
         # ensure positive values where needed
