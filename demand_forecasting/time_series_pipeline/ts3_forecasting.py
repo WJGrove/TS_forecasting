@@ -1,8 +1,9 @@
 import pandas as pd
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pyspark.sql import DataFrame as SparkDataFrame
 from typing import Literal, Optional
+
 
 TimeGranularity = Literal["week", "month"]
 BaselineMethod = Literal["seasonal_naive"]  # can extend later
@@ -15,6 +16,9 @@ class TSForecastConfig:
     seasonal_period: int = 52
     min_history_for_exp_smoothing: int = 2 * 52  # e.g. 2 years of weekly data
 
+    stats_alpha: float = 0.05 # probability of type 1 error ("false positive") in statistical tests. This gives 95% confidence level.
+    smoothing_alpha: float | None = None  # smoothing param; if None, estimate
+
     target_col: str = "y_clean_int"
     transformed_target_col: str | None = "y_clean_int_transformed"
     transformation_constant_col: str | None = "series_lambda"
@@ -22,18 +26,26 @@ class TSForecastConfig:
     date_col: str = "ds"
     short_flag_col: str = "is_short_series"
 
+    # configurable columns for exogenous variables
+    holiday_indicator_cols: list[str] = field(default_factory=list)
+    exogenous_cols: list[str] = field(default_factory=list)
+
     forecast_transformed_target: bool = False
 
     baseline_method: BaselineMethod = "seasonal_naive"
 
     def __post_init__(self):
-        # ensure positive integers where needed
+        # ensure positive values where needed
         if self.horizon <= 0:
             raise ValueError("horizon must be a positive integer")
         if self.seasonal_period <= 0:
             raise ValueError("seasonal_period must be a positive integer")
         if self.min_history_for_exp_smoothing <= 0:
             raise ValueError("min_history_for_exp_smoothing must be a positive integer")
+        if not (0 < self.stats_alpha < 1):
+            raise ValueError("stats_alpha must be between 0 and 1")
+        if self.smoothing_alpha is not None and not (0 < self.smoothing_alpha < 1):
+            raise ValueError("smoothing_alpha must be between 0 and 1 if specified")
 
 
 class TSForecaster:
