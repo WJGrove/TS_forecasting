@@ -69,6 +69,79 @@ class TSForecastConfig:
             raise ValueError("short_series_strategy must be 'naive', 'seasonal_naive', or 'comp_based'")
 
 
+def compute_wape(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str,
+) -> float:
+    """
+    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
+
+    WAPE = sum(|y - y_hat|) / sum(y)
+
+    Both dataframes should have (group_col, date_col) keys; this function will
+    join them on those keys and compute a single global WAPE.
+    """
+    merged = df_actual[[group_col, date_col, target_col]].merge(
+        df_forecast[[group_col, date_col, forecast_col]],
+        on=[group_col, date_col],
+        how="inner",
+        suffixes=("_actual", "_forecast"),
+    )
+
+    if merged.empty:
+        raise ValueError(
+            "No overlapping rows between actuals and forecasts to compute WAPE."
+        )
+
+    num = (
+        (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
+        .abs()
+        .sum()
+    )
+    denom = merged[f"{target_col}_actual"].abs().sum()
+
+    if denom == 0:
+        # Degenerate case: no volume at all
+        return float("nan")
+
+    return float(num / denom)
+
+
+def train_test_split_panel(
+    df: pd.DataFrame,
+    config: TSForecastConfig,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split the preprocessed panel into train and test sets by time.
+
+    By default:
+    - test set = last `test_set_length` periods before the max date in the data
+    - train set = everything earlier.
+
+    (This is slightly more general and less calendar-specific than your "last Sunday"
+     approach, but we can add a "calendar mode" later if needed.)
+    """
+    c = config
+    if c.date_col not in df.columns:
+        raise ValueError(f"date_col '{c.date_col}' not found in panel.")
+
+    # Sort by date just for sanity
+    df_sorted = df.sort_values(c.date_col)
+
+    max_date = df_sorted[c.date_col].max()
+    # test set starts `test_set_length` periods before max_date
+    # (for weekly/monthly panel this is just "last N rows in time")
+    # For now, we can approximate by using ranks or rolling, but we’ll
+    # implement it in code when we get there.
+
+    ...
+
+
+
 class TSForecaster:
     """
     Orchestrates panel forecasting:
@@ -210,75 +283,3 @@ class TSForecaster:
         return self._forecast_short_seasonal_naive(series_id, pdf)
     else:
         return self._forecast_short_naive(series_id, pdf)
-
-
-def compute_wape(
-    df_actual: pd.DataFrame,
-    df_forecast: pd.DataFrame,
-    group_col: str,
-    date_col: str,
-    target_col: str,
-    forecast_col: str,
-) -> float:
-    """
-    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
-
-    WAPE = sum(|y - y_hat|) / sum(y)
-
-    Both dataframes should have (group_col, date_col) keys; this function will
-    join them on those keys and compute a single global WAPE.
-    """
-    merged = df_actual[[group_col, date_col, target_col]].merge(
-        df_forecast[[group_col, date_col, forecast_col]],
-        on=[group_col, date_col],
-        how="inner",
-        suffixes=("_actual", "_forecast"),
-    )
-
-    if merged.empty:
-        raise ValueError(
-            "No overlapping rows between actuals and forecasts to compute WAPE."
-        )
-
-    num = (
-        (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
-        .abs()
-        .sum()
-    )
-    denom = merged[f"{target_col}_actual"].abs().sum()
-
-    if denom == 0:
-        # Degenerate case: no volume at all
-        return float("nan")
-
-    return float(num / denom)
-
-
-def train_test_split_panel(
-    df: pd.DataFrame,
-    config: TSForecastConfig,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Split the preprocessed panel into train and test sets by time.
-
-    By default:
-    - test set = last `test_set_length` periods before the max date in the data
-    - train set = everything earlier.
-
-    (This is slightly more general and less calendar-specific than your "last Sunday"
-     approach, but we can add a "calendar mode" later if needed.)
-    """
-    c = config
-    if c.date_col not in df.columns:
-        raise ValueError(f"date_col '{c.date_col}' not found in panel.")
-
-    # Sort by date just for sanity
-    df_sorted = df.sort_values(c.date_col)
-
-    max_date = df_sorted[c.date_col].max()
-    # test set starts `test_set_length` periods before max_date
-    # (for weekly/monthly panel this is just "last N rows in time")
-    # For now, we can approximate by using ranks or rolling, but we’ll
-    # implement it in code when we get there.
-
-    ...
