@@ -15,6 +15,7 @@ class TSForecastConfig:
     time_granularity: TimeGranularity = "week"
     seasonal_period: int = 52
     min_history_for_exp_smoothing: int = 2 * 52  # e.g. 2 years of weekly data
+    # add something here for test/train set delineation...
 
     stats_alpha: float = 0.05 # probability of type 1 error ("false positive") in statistical tests. This gives 95% confidence level.
     smoothing_alpha: float | None = None  # smoothing param; if None, estimate
