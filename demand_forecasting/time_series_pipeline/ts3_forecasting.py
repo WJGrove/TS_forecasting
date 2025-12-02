@@ -1,5 +1,7 @@
 import pandas as pd
 from dataclasses import dataclass, field
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.seasonal import STL
 
 from pyspark.sql import DataFrame as SparkDataFrame
 from typing import Literal, Optional
@@ -7,7 +9,7 @@ from typing import Literal, Optional
 
 TimeGranularity = Literal["week", "month"]
 BaselineMethod = Literal["seasonal_naive"]  # can extend later
-
+ShortSeriesStrategy = Literal["naive", "seasonal_naive", "comp_based"]
 
 @dataclass
 class TSForecastConfig:
@@ -36,7 +38,8 @@ class TSForecastConfig:
 
     forecast_transformed_target: bool = False
 
-    # short series/comparison group config    
+    # short series/comparison group config
+    short_series_strategy: ShortSeriesStrategy = "naive" # this can be naive, seasonal_naive, or comp_based; if comp_based, uses comp_group_cols    
     comp_group_default_yoy: float = 0.02  # default for groups with no history
     comp_group_cols: list[str] = field(default_factory=list)  # columns defining comparison groups (e.g., [parent_company, item_id, market])
 
@@ -56,6 +59,14 @@ class TSForecastConfig:
             raise ValueError("stats_alpha must be between 0 and 1")
         if self.smoothing_alpha is not None and not (0 < self.smoothing_alpha < 1):
             raise ValueError("smoothing_alpha must be between 0 and 1 if specified")
+        
+        # validate string literals
+        if self.time_granularity not in {"week", "month"}:
+            raise ValueError("time_granularity must be 'week' or 'month'")
+        if self.test_end_anchor not in {"calendar", "max_ds"}:
+            raise ValueError("test_end_anchor must be 'calendar' or 'max_ds'")
+        if self.short_series_strategy not in {"naive", "seasonal_naive", "comp_based"}:
+            raise ValueError("short_series_strategy must be 'naive', 'seasonal_naive', or 'comp_based'")
 
 
 class TSForecaster:
@@ -161,25 +172,45 @@ class TSForecaster:
 
     # ---------- Internal: per-series hooks (we'll plug your old code here) ----------
 
-    def _forecast_long_one_series(
-        self, series_id: str, pdf: pd.DataFrame
-    ) -> pd.DataFrame:
-        """
-        Forecast one 'long' series using exponential smoothing.
+    def _forecast_long_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+    c = self.config
 
-        This is the place we’ll paste/refactor your old ETS logic.
-        For now, keep it as a stub or a very simple example.
-        """
-        raise NotImplementedError
+    pdf = pdf.sort_values(c.date_col)
+    y_col = c.transformed_target_col if c.forecast_transformed_target and c.transformed_target_col in pdf.columns else c.target_col
 
-    def _forecast_short_one_series(
-        self, series_id: str, pdf: pd.DataFrame
-    ) -> pd.DataFrame:
-        """
-        Forecast one 'short' series using a simpler strategy
-        (e.g., naive/seasonal-naive/mean of last N).
-        """
-        raise NotImplementedError
+    y = pdf[y_col].to_numpy(dtype="float64")
+
+    # STL decomposition with configurable seasonal_period
+    stl = STL(y, period=c.seasonal_period, seasonal=13, robust=True)
+    result = stl.fit()
+    seasonal, trend, resid = result.seasonal, result.trend, result.resid
+
+    # ETS on trend + resid; optionally pass smoothing_alpha if not None
+    model = ExponentialSmoothing(
+        trend + resid,
+        trend="additive",
+        seasonal=None,
+        initialization_method="estimated",
+    )
+    model_fit = model.fit(
+        optimized=(c.smoothing_alpha is None),
+        smoothing_level=c.smoothing_alpha,
+    )
+
+    # Forecast horizon periods in Box-Cox or original space (depending on y_col)
+    fcst_core = model_fit.forecast(c.horizon)
+    # Add last seasonal pattern back
+    seasonal_tail = seasonal[-c.seasonal_period:]
+    # etc...
+
+    def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+    if self.config.short_series_strategy == "comp_based":
+        return self._forecast_short_comp_based(series_id, pdf)
+    elif self.config.short_series_strategy == "seasonal_naive":
+        return self._forecast_short_seasonal_naive(series_id, pdf)
+    else:
+        return self._forecast_short_naive(series_id, pdf)
+
 
     def compute_wape(
         df_actual: pd.DataFrame,
@@ -221,3 +252,33 @@ class TSForecaster:
             return float("nan")
 
         return float(num / denom)
+
+
+def train_test_split_panel(
+    df: pd.DataFrame,
+    config: TSForecastConfig,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split the preprocessed panel into train and test sets by time.
+
+    By default:
+    - test set = last `test_set_length` periods before the max date in the data
+    - train set = everything earlier.
+
+    (This is slightly more general and less calendar-specific than your "last Sunday"
+     approach, but we can add a "calendar mode" later if needed.)
+    """
+    c = config
+    if c.date_col not in df.columns:
+        raise ValueError(f"date_col '{c.date_col}' not found in panel.")
+
+    # Sort by date just for sanity
+    df_sorted = df.sort_values(c.date_col)
+
+    max_date = df_sorted[c.date_col].max()
+    # test set starts `test_set_length` periods before max_date
+    # (for weekly/monthly panel this is just "last N rows in time")
+    # For now, we can approximate by using ranks or rolling, but we’ll
+    # implement it in code when we get there.
+
+    ...
