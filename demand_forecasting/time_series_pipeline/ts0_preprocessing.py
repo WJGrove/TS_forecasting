@@ -13,7 +13,7 @@ from pyspark.sql.window import Window
 # The functions below are defined in a legacy reference folder and will be
 #  refactored after the preprocessing, diagnostics, and plotting modules are stable.
 from demand_forecasting.time_series_pipeline.ts_helper_functions import (
-    upsample_weeklyts_groupwise,
+    upsample_ts_groupwise,
     flag_data_prior_to_inactive_periods,
     remove_insuff_series,
     fill_dim_nulls_groupwise,
@@ -363,12 +363,23 @@ class TSPreprocessor:
         df_agg = df.groupBy(c.date_col, c.group_col).agg(*agg_exprs)
         return df_agg.orderBy(c.date_col, c.group_col)
 
-    def fill_missing_dates(self, df_weekly: DataFrame) -> DataFrame:
+    def fill_missing_dates(self, df_period: DataFrame) -> DataFrame:
         """
-        Use upsample_weeklyts_groupwise to fill gaps in each series.
+        Fill gaps in each series' time axis.
+
+        Uses upsample_ts_groupwise(...) to generate all weekly or monthly
+        periods between the per-series min and max dates, then left-joins
+        back to the original data.
         """
         c = self.config
-        return upsample_weeklyts_groupwise(df_weekly, c.date_col, c.group_col)
+        gran = c.time_granularity.lower()
+
+        return upsample_ts_groupwise(
+            df_period,
+            date_col=c.date_col,
+            group_col=c.group_col,
+            granularity=gran,
+        )
 
     def remove_inactive_and_insufficient(self, df_dates_filled: DataFrame) -> DataFrame:
         """
