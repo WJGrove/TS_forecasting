@@ -11,6 +11,7 @@ from typing import Literal, Optional, Tuple
 
 from ts_forecast_utils import train_test_split_panel
 
+
 TimeGranularity = Literal["week", "month"]
 BaselineMethod = Literal["seasonal_naive"]  # can extend later
 ShortSeriesStrategy = Literal["naive", "seasonal_naive", "comp_based"]
