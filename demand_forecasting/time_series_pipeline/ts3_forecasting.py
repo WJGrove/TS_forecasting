@@ -501,8 +501,104 @@ class TSForecaster:
         )
 
         return out
+    # ---------- Internal: short-series strategies ----------
     def _forecast_short_naive(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
         Short-series naive strategy: reuse the generic naive forecaster.
         """
         return self._forecast_naive_one_series(series_id, pdf)
+    
+    def _forecast_short_seasonal_naive(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Seasonal-naive forecast for a single short series:
+
+        - If the series has at least one full seasonal_period of history:
+            * take the last seasonal_period actuals,
+            * repeat them forward to cover the horizon.
+        - If it has fewer than seasonal_period observations:
+            * repeat the entire history forward to cover the horizon.
+
+        Always works on the *original* target_col, not the transformed one.
+        """
+        c = self.config
+
+        pdf = pdf.copy()
+        pdf = pdf.sort_values(c.date_col)
+
+        if pdf.empty:
+            raise ValueError(f"Series '{series_id}' has no data; cannot forecast.")
+
+        if c.target_col not in pdf.columns:
+            raise ValueError(
+                f"Target column '{c.target_col}' not found for series '{series_id}'."
+            )
+
+        y = pdf[c.target_col].astype("float64").to_numpy()
+        n = len(y)
+        s = c.seasonal_period
+
+        if n == 0:
+            raise ValueError(f"Series '{series_id}' has length 0; cannot forecast.")
+
+        if s <= 0:
+            raise ValueError("seasonal_period must be positive for seasonal_naive strategy.")
+
+        # Choose the pattern to repeat
+        if n >= s:
+            pattern = y[-s:]  # last full seasonal cycle
+        else:
+            # Not enough history for a full season: repeat what we have
+            pattern = y
+
+        h = c.horizon
+        reps = int(np.ceil(h / len(pattern)))
+        fcst_vals = np.tile(pattern, reps)[:h]
+
+        last_date = pd.to_datetime(pdf[c.date_col].max())
+
+        if c.time_granularity.lower() == "week":
+            future_dates = pd.date_range(
+                start=last_date + pd.DateOffset(weeks=1),
+                periods=h,
+                freq="W",
+            ).normalize()
+        elif c.time_granularity.lower() == "month":
+            future_dates = pd.date_range(
+                start=(last_date + pd.DateOffset(months=1)).replace(day=1),
+                periods=h,
+                freq="MS",
+            )
+        else:
+            raise ValueError(
+                f"Unsupported time_granularity '{c.time_granularity}'. "
+                "Expected 'week' or 'month'."
+            )
+
+        out = pd.DataFrame(
+            {
+                c.group_col: [series_id] * h,
+                c.date_col: future_dates,
+                "y_hat": fcst_vals,
+            }
+        )
+
+        return out
+    
+    def _forecast_short_comp_based(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Placeholder for your comp-based short-series forecasting logic.
+
+        The idea (from your legacy notebook) is:
+        - Use comp groups (e.g., parent_company_fc + item_id_fc).
+        - Estimate first-year total volume from partial-year observations +
+          comp-group normalized first-year shape.
+        - Use comp-group YoY growth rates to extend beyond the first year.
+
+        For now, this method raises NotImplementedError so that you can
+        implement it once the rest of the pipeline is stable.
+        """
+        raise NotImplementedError(
+            "Comp-based short-series forecasting is not implemented yet. "
+            "Set short_series_strategy='naive' or 'seasonal_naive' in TSForecastConfig "
+            "until this method is implemented."
+        )
