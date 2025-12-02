@@ -4,7 +4,9 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.seasonal import STL
 
 from pyspark.sql import DataFrame as SparkDataFrame
-from typing import Literal, Optional
+from pyspark.sql import functions as F
+from datetime import timedelta
+from typing import Literal, Optional, Tuple
 
 
 TimeGranularity = Literal["week", "month"]
@@ -69,76 +71,91 @@ class TSForecastConfig:
             raise ValueError("short_series_strategy must be 'naive', 'seasonal_naive', or 'comp_based'")
 
 
-def compute_wape(
-    df_actual: pd.DataFrame,
-    df_forecast: pd.DataFrame,
-    group_col: str,
-    date_col: str,
-    target_col: str,
-    forecast_col: str,
-) -> float:
-    """
-    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
-
-    WAPE = sum(|y - y_hat|) / sum(y)
-
-    Both dataframes should have (group_col, date_col) keys; this function will
-    join them on those keys and compute a single global WAPE.
-    """
-    merged = df_actual[[group_col, date_col, target_col]].merge(
-        df_forecast[[group_col, date_col, forecast_col]],
-        on=[group_col, date_col],
-        how="inner",
-        suffixes=("_actual", "_forecast"),
-    )
-
-    if merged.empty:
-        raise ValueError(
-            "No overlapping rows between actuals and forecasts to compute WAPE."
-        )
-
-    num = (
-        (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
-        .abs()
-        .sum()
-    )
-    denom = merged[f"{target_col}_actual"].abs().sum()
-
-    if denom == 0:
-        # Degenerate case: no volume at all
-        return float("nan")
-
-    return float(num / denom)
-
-
 def train_test_split_panel(
-    df: pd.DataFrame,
+    df: SparkDataFrame,
     config: TSForecastConfig,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[SparkDataFrame, SparkDataFrame]:
     """
-    Split the preprocessed panel into train and test sets by time.
+    Split a preprocessed Spark panel into train and test sets based on time.
 
-    By default:
-    - test set = last `test_set_length` periods before the max date in the data
-    - train set = everything earlier.
+    Current behavior:
+    - Uses a *global* cutoff date based on the maximum date in the panel.
+    - Test set = all rows with date_col in (test_start_date, max_date]
+    - Train set = all rows with date_col <= test_start_date
 
-    (This is slightly more general and less calendar-specific than your "last Sunday"
-     approach, but we can add a "calendar mode" later if needed.)
+    Where:
+    - max_date is the maximum non-null value in config.date_col.
+    - test_start_date is computed as:
+        * week  : max_date - test_set_length * 1 week
+        * month : max_date - test_set_length * 1 month
+
+    This matches the spirit of your original notebook, but anchors to the data
+    itself (max ds) instead of wall-clock "today" / "last Sunday".
+
+    Parameters
+    ----------
+    df : SparkDataFrame
+        Preprocessed panel with at least config.date_col.
+    config : TSForecastConfig
+        Forecast configuration (uses date_col, test_set_length, time_granularity).
+
+    Returns
+    -------
+    (train_df, test_df) : tuple[SparkDataFrame, SparkDataFrame]
+        Two DataFrames with the same schema as df.
     """
     c = config
+
     if c.date_col not in df.columns:
-        raise ValueError(f"date_col '{c.date_col}' not found in panel.")
+        raise ValueError(
+            f"date_col '{c.date_col}' not found in DataFrame columns: {df.columns}"
+        )
 
-    # Sort by date just for sanity
-    df_sorted = df.sort_values(c.date_col)
+    # Get the maximum date from the panel
+    max_date_row = df.agg(F.max(c.date_col).alias("max_date")).collect()[0]
+    max_date = max_date_row["max_date"]
 
-    max_date = df_sorted[c.date_col].max()
-    # test set starts `test_set_length` periods before max_date
-    # (for weekly/monthly panel this is just "last N rows in time")
-    # For now, we can approximate by using ranks or rolling, but we’ll
-    # implement it in code when we get there.
+    if max_date is None:
+        raise ValueError(
+            f"All values in date_col '{c.date_col}' are null; cannot perform time-based split."
+        )
 
-    ...
+    gran = c.time_granularity.lower()
+
+    # Compute the start of the test window based on the configured granularity
+    if gran == "week":
+        # test_set_length is interpreted as number of weeks
+        test_start_date = max_date - timedelta(weeks=c.test_set_length)
+    elif gran == "month":
+        # For monthly data, use relativedelta to subtract whole months.
+        try:
+            from dateutil.relativedelta import relativedelta
+        except ImportError as e:
+            raise ImportError(
+                "dateutil is required for monthly train/test splits. "
+                "Install via 'pip install python-dateutil'."
+            ) from e
+
+        test_start_date = max_date - relativedelta(months=c.test_set_length)
+    else:
+        # Should be prevented by TSPreprocessingConfig/TSForecastConfig validation,
+        # but keep a defensive check in case of future changes.
+        raise ValueError(
+            f"Unsupported time_granularity '{c.time_granularity}'. "
+            "Expected 'week' or 'month'."
+        )
+
+    # Build train/test filters
+    # Test = dates strictly greater than test_start_date, up to and including max_date
+    test_df = df.filter(
+        (F.col(c.date_col) > F.lit(test_start_date))
+        & (F.col(c.date_col) <= F.lit(max_date))
+    )
+
+    # Train = dates less than or equal to test_start_date
+    train_df = df.filter(F.col(c.date_col) <= F.lit(test_start_date))
+
+    return train_df, test_df
 
 
 
