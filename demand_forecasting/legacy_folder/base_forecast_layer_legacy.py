@@ -1675,7 +1675,3 @@ aggregated_forecasts_df.show()
 # COMMAND ----------
 
 # Save unaggregated forecasts to a table
-
-# automatically enable/disable code to save the forecasts as a table using 'test_set_length'?? (ex: if test_set_length = 0 save a forecast to the relevent location, else skip)
-
-# In the testing notebook, write something such that if the test_set_length is not 0, the test_set_length, the start/end dates, error stats, sample size, etc. are saved to a testing table.
