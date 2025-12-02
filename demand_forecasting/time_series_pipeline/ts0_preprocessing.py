@@ -51,7 +51,7 @@ class TSPreprocessingConfig:
     product_wavg_unit_price_col: str = "product_wavg_unit_price"
     product_dim_col1: str | None = "package_type"
     product_dim_col2: str | None = "recipe"
-    product_dim_col3: str | None = None
+    product_dim_col3: str | None = "pack_size"
 
     # Time-series ID / grouping configuration
     # group_col is the name of the column used to identify a time series in the pipeline.
