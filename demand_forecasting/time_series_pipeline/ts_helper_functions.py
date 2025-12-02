@@ -11,7 +11,6 @@ from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
 from typing import Literal
 
-# The following function was reviewed on 12/01/2025. Good to go for weekly data, but really should be more generalized.
 
 
 def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
@@ -185,9 +184,6 @@ def flag_data_prior_to_inactive_periods(
     return df_inact_rem
 
 
-# The following function was reviewed on 12/01/2025. Good to go.
-
-
 def remove_insuff_series(df, group_col, insufficient_data_threshold, value_col):
     """
     Removes series from a DataFrame based on a threshold of minimum data points.
@@ -223,9 +219,6 @@ def remove_insuff_series(df, group_col, insufficient_data_threshold, value_col):
     return df_filtered
 
 
-# The following function was reviewed on 12/01/2025. Good to go.
-
-
 def fill_dim_nulls_groupwise(df, group_col, date_col, cols_to_fill):
     """
     Efficiently fill null values in specified columns using both backward fill and forward fill methods.
@@ -257,8 +250,6 @@ def fill_dim_nulls_groupwise(df, group_col, date_col, cols_to_fill):
     return df
 
 
-# The following function was reviewed on 12/01/2025. Good to go.
-# rename to include the word "clean" somewhere.
 def groupwise_clean_flag_outliers(
     df,
     cols_for_outlier_removal,
@@ -335,7 +326,7 @@ def groupwise_clean_flag_outliers(
     return df
 
 
-
+# Define a type for interpolation methods
 InterpMethod = Literal["linear", "spline", "polynomial"] # spelling these out to satisfy Pylance in the "else" line below.
 
 def interpolate_groupwise_numeric(
@@ -422,8 +413,6 @@ def interpolate_groupwise_numeric(
 # -------------------------------------------------------------------------------
 
 
-# The following function must be refactored to avoid converting the whole Spark DataFrame to Pandas. It is not scalable.
-# information about which series were transformed and their lambda values needs to be stored for inverse transformation as well as reporting later.
 # make spark an explicit dependency argument or use SparkSession.getActiveSession()
 def boxcox_transform_groupwise(
     df: DataFrame,
