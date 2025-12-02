@@ -24,7 +24,7 @@ from demand_forecasting.time_series_pipeline.ts_helper_functions import (
 
 
 TimeGranularity = Literal["week", "month"]
-
+InterpMethod = Literal["linear", "polynomial", "spline"]
 
 @dataclass
 class TSPreprocessingConfig:
@@ -80,7 +80,7 @@ class TSPreprocessingConfig:
     cols_for_outlier_removal: List[str] = field(default_factory=list)
 
     # Interpolation config
-    interpolation_method: str = "linear"  # 'linear', 'polynomial', 'spline'
+    interpolation_method: InterpMethod = "linear"  # 'linear', 'polynomial', 'spline'
     interpolation_order: int = 3  # used for 'polynomial' / 'spline'
 
     # Seasonality and thresholds:
@@ -374,7 +374,7 @@ class TSPreprocessor:
         c = self.config
 
         gran = c.time_granularity.lower()
-        
+
         return upsample_ts_groupwise(
             df_period,
             date_col=c.date_col,
