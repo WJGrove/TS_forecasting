@@ -9,27 +9,81 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
+
 from typing import Literal
 
+TimeGranularity = Literal["week", "month"]
 
+def upsample_ts_groupwise(
+    df: DataFrame,
+    date_col: str = "ds",
+    group_col: str = "time_series_id",
+    granularity: TimeGranularity = "week",
+) -> DataFrame:
+    """
+    Fill in missing time periods within each series (group_col) by generating
+    a continuous sequence of dates from the per-series min(date_col) to
+    max(date_col), at weekly or monthly frequency.
 
-def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
+    - For 'week'  : uses interval 1 week
+    - For 'month' : uses interval 1 month
 
-    # Get the first and last dates for each group using aggregation
-    date_ranges = df.groupBy(group_col).agg(
-        F.min(date_col).alias("first_date"), F.max(date_col).alias("last_date")
+    The function:
+    1) Computes [first_date, last_date] per group.
+    2) Generates all dates between them using Spark's `sequence` function.
+    3) Left-joins back to the original DataFrame to preserve all other columns.
+
+    NOTE: This assumes date_col contains a date or timestamp compatible with
+    Spark's `sequence` and `date_trunc` behavior.
+    """
+    gran = granularity.lower()
+    if gran not in {"week", "month"}:
+        raise ValueError("This function only supports 'week' or 'month'.")
+
+    # Make sure date_col is a DATE; sequence works fine with dates.
+    df_dates = df.withColumn(date_col, F.to_date(F.col(date_col)))
+
+    # 1) Per-group min/max dates
+    date_ranges = df_dates.groupBy(group_col).agg(
+        F.min(date_col).alias("first_date"),
+        F.max(date_col).alias("last_date"),
     )
 
-    # Generate the full sequence of dates for each group
+    # 2) Build the interval expression based on granularity
+    if gran == "week":
+        interval_expr = "interval 1 week"
+    else:  # gran == "month"
+        interval_expr = "interval 1 month"
+
+    # 3) Generate all dates between first_date and last_date at the chosen frequency
     expanded_dates = date_ranges.withColumn(
-        "ds", F.explode(F.expr("sequence(first_date, last_date, interval 1 week)"))
-    ).select(group_col, "ds")
+        date_col,
+        F.explode(F.expr(f"sequence(first_date, last_date, {interval_expr})")),
+    ).select(group_col, date_col)
 
-    # join with the original DataFrame
-    df = expanded_dates.join(df, on=[group_col, date_col], how="left_outer")
-    df = df.orderBy(group_col, date_col)
+    # 4) Left-join original data on (group_col, date_col) to preserve all other columns
+    df_upsampled = expanded_dates.join(df_dates, on=[group_col, date_col], how="left")
 
-    return df
+    return df_upsampled.orderBy(group_col, date_col)
+
+
+# def upsample_weeklyts_groupwise(df, date_col="ds", group_col="time_series_id"):
+
+#     # Get the first and last dates for each group using aggregation
+#     date_ranges = df.groupBy(group_col).agg(
+#         F.min(date_col).alias("first_date"), F.max(date_col).alias("last_date")
+#     )
+
+#     # Generate the full sequence of dates for each group
+#     expanded_dates = date_ranges.withColumn(
+#         "ds", F.explode(F.expr("sequence(first_date, last_date, interval 1 week)"))
+#     ).select(group_col, "ds")
+
+#     # join with the original DataFrame
+#     df = expanded_dates.join(df, on=[group_col, date_col], how="left_outer")
+#     df = df.orderBy(group_col, date_col)
+
+#     return df
 
 
 def flag_data_prior_to_inactive_periods(
