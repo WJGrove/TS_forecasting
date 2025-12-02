@@ -7,19 +7,22 @@ from typing import Literal, Optional
 TimeGranularity = Literal["week", "month"]
 BaselineMethod = Literal["seasonal_naive"]  # can extend later
 
+
 @dataclass
 class TSForecastConfig:
     horizon: int = 26  # number of periods ahead
     time_granularity: TimeGranularity = "week"
     seasonal_period: int = 52
+    min_history_for_exp_smoothing: int = 2 * 52  # e.g. 2 years of weekly data
 
     target_col: str = "y_clean_int"
+    transformed_target_col: str | None = "y_clean_int_transformed"
+    transformation_constant_col: str | None = "series_lambda"
     group_col: str = "time_series_id"
     date_col: str = "ds"
     short_flag_col: str = "is_short_series"
 
-    min_history_for_exp_smoothing: int = (2 * 52)  # e.g. 2 years of weekly data
-    use_boxcox_for_forecasting: bool = False
+    forecast_transformed_target: bool = False
 
     baseline_method: BaselineMethod = "seasonal_naive"
 
@@ -31,7 +34,6 @@ class TSForecastConfig:
             raise ValueError("seasonal_period must be a positive integer")
         if self.min_history_for_exp_smoothing <= 0:
             raise ValueError("min_history_for_exp_smoothing must be a positive integer")
-
 
 
 class TSForecaster:
@@ -62,8 +64,12 @@ class TSForecaster:
         """
         c = self.config
 
-        if not {c.group_col, c.date_col, c.target_col, c.short_flag_col}.issubset(df_panel.columns):
-            missing = {c.group_col, c.date_col, c.target_col, c.short_flag_col} - set(df_panel.columns)
+        if not {c.group_col, c.date_col, c.target_col, c.short_flag_col}.issubset(
+            df_panel.columns
+        ):
+            missing = {c.group_col, c.date_col, c.target_col, c.short_flag_col} - set(
+                df_panel.columns
+            )
             raise ValueError(f"Input panel is missing required columns: {missing}")
 
         # Split short vs non-short
@@ -133,7 +139,9 @@ class TSForecaster:
 
     # ---------- Internal: per-series hooks (we'll plug your old code here) ----------
 
-    def _forecast_long_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+    def _forecast_long_one_series(
+        self, series_id: str, pdf: pd.DataFrame
+    ) -> pd.DataFrame:
         """
         Forecast one 'long' series using exponential smoothing.
 
@@ -142,11 +150,52 @@ class TSForecaster:
         """
         raise NotImplementedError
 
-    def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+    def _forecast_short_one_series(
+        self, series_id: str, pdf: pd.DataFrame
+    ) -> pd.DataFrame:
         """
         Forecast one 'short' series using a simpler strategy
         (e.g., naive/seasonal-naive/mean of last N).
         """
         raise NotImplementedError
-    
 
+    def compute_wape(
+        df_actual: pd.DataFrame,
+        df_forecast: pd.DataFrame,
+        group_col: str,
+        date_col: str,
+        target_col: str,
+        forecast_col: str,
+    ) -> float:
+        """
+        Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
+
+        WAPE = sum(|y - y_hat|) / sum(y)
+
+        Both dataframes should have (group_col, date_col) keys; this function will
+        join them on those keys and compute a single global WAPE.
+        """
+        merged = df_actual[[group_col, date_col, target_col]].merge(
+            df_forecast[[group_col, date_col, forecast_col]],
+            on=[group_col, date_col],
+            how="inner",
+            suffixes=("_actual", "_forecast"),
+        )
+
+        if merged.empty:
+            raise ValueError(
+                "No overlapping rows between actuals and forecasts to compute WAPE."
+            )
+
+        num = (
+            (merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"])
+            .abs()
+            .sum()
+        )
+        denom = merged[f"{target_col}_actual"].abs().sum()
+
+        if denom == 0:
+            # Degenerate case: no volume at all
+            return float("nan")
+
+        return float(num / denom)
