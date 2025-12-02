@@ -12,7 +12,7 @@ from pyspark.sql.window import Window
 
 # The functions below are defined in a legacy reference folder and will be
 #  refactored after the preprocessing, diagnostics, and plotting modules are stable.
-from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
+from demand_forecasting.time_series_pipeline.ts_helper_functions import (
     upsample_weeklyts_groupwise,
     flag_data_prior_to_inactive_periods,
     remove_insuff_series,
