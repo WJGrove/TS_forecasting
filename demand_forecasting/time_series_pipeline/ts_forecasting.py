@@ -37,7 +37,7 @@ class TSForecastConfig:
 class TSForecaster:
     """
     Orchestrates panel forecasting:
-    - splits short vs non-short,
+    - splits short vs "long" (non-short) series,
     - applies exponential smoothing for long series,
     - simpler fallback for short series,
     - optional baseline + metrics.
@@ -135,3 +135,17 @@ class TSForecaster:
         (e.g., naive/seasonal-naive/mean of last N).
         """
         raise NotImplementedError
+    
+    def _compute_baseline_panel(self, df_panel: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute a seasonal-naive baseline forecast for all series
+        for comparison purposes.
+
+        For now, this is just a stub: we’ll implement once the main
+        forecasting path is in place.
+        """
+        # e.g., we will:
+        # - for each series, take the last `seasonal_period` actuals,
+        # - align them as the horizon forecasts.
+        return pd.DataFrame()
+
