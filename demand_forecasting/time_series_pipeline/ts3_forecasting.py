@@ -1,8 +1,9 @@
 import pandas as pd
-from dataclasses import dataclass, field
+import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.seasonal import STL
 
+from dataclasses import dataclass, field
 from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql import functions as F
 from datetime import timedelta
@@ -158,22 +159,208 @@ class TSForecaster:
         # - align them as the horizon forecasts.
         return pd.DataFrame()
 
+
     def _forecast_long_series_panel(self, df_long: pd.DataFrame) -> pd.DataFrame:
         """
-        Loop over long series and forecast each one.
-        For now, run sequentially; later we can add joblib for parallelism.
+        Forecast all 'long' series in a preprocessed panel (pandas).
+
+        Assumes df_long contains at least:
+        - config.group_col
+        - config.date_col
+        - config.target_col (and optionally transformed_target_col)
+
+        Returns a DataFrame with one row per (group, forecast_date):
+        - group_col
+        - date_col (future dates)
+        - 'y_hat' (point forecast)
+
+        Short/insufficient series should generally have been filtered out
+        *before* calling this function, but we still guard against edge cases.
         """
         c = self.config
+
+        required_cols = {c.group_col, c.date_col, c.target_col}
+        missing = required_cols - set(df_long.columns)
+        if missing:
+            raise ValueError(
+                f"df_long is missing required columns for long-series forecasting: {missing}"
+            )
+
+        # Just in case someone passes an empty panel
+        if df_long.empty:
+            return pd.DataFrame(
+                columns=[c.group_col, c.date_col, "y_hat"],
+                dtype="float64",
+            )
+
         results: list[pd.DataFrame] = []
 
+        # Group by series and forecast each one
         for series_id, pdf in df_long.groupby(c.group_col):
-            fcst = self._forecast_long_one_series(series_id, pdf)
+            try:
+                fcst = self._forecast_long_one_series(series_id, pdf)
+            except Exception as exc:
+                # Defensive: if a single series fails, we don't want the whole
+                # pipeline to crash. You can log this or re-raise depending on
+                # your appetite.
+                print(
+                    f"[WARN] Failed to forecast long series '{series_id}': {exc!r}. "
+                    "Falling back to naive forecast for this series."
+                )
+                fcst = self._forecast_naive_one_series(series_id, pdf)
+
             results.append(fcst)
 
-        if not results:
-            return pd.DataFrame(columns=[c.group_col, c.date_col, c.target_col])
-
         return pd.concat(results, ignore_index=True)
+
+    def _forecast_long_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Forecast a single 'long' series using STL decomposition + ExponentialSmoothing.
+
+        Steps:
+        - Sort by date.
+        - Choose the modeling target:
+            * transformed_target_col if forecast_transformed_target=True and present
+            * else target_col
+        - Perform STL decomposition with seasonal_period from config.
+        - Fit ETS on (trend + resid).
+        - Forecast `horizon` steps ahead.
+        - Add back the seasonal component by repeating the last seasonal period.
+        - Generate future dates based on time_granularity (week or month).
+
+        Returns a DataFrame with:
+        - group_col
+        - date_col (future dates)
+        - 'y_hat' (point forecast in the same space as the modeling target)
+        """
+        c = self.config
+
+        # Defensive: copy and sort
+        pdf = pdf.copy()
+        pdf = pdf.sort_values(c.date_col)
+
+        if pdf.empty:
+            raise ValueError(f"Series '{series_id}' has no data; cannot forecast.")
+
+        # Decide which column to model on
+        if (
+            c.forecast_transformed_target
+            and c.transformed_target_col is not None
+            and c.transformed_target_col in pdf.columns
+        ):
+            y_col = c.transformed_target_col
+        else:
+            y_col = c.target_col
+
+        if y_col not in pdf.columns:
+            raise ValueError(
+                f"Target column '{y_col}' not found for series '{series_id}'. "
+                "Check TSForecastConfig.target_col / transformed_target_col."
+            )
+
+        # Extract the time series as a float64 numpy array
+        y = pdf[y_col].astype("float64").to_numpy()
+
+        # Basic validation: length and finite values
+        n_obs = len(y)
+        if n_obs < c.min_history_for_exp_smoothing:
+            raise ValueError(
+                f"Series '{series_id}' has length {n_obs}, which is less than "
+                f"min_history_for_exp_smoothing={c.min_history_for_exp_smoothing}."
+            )
+
+        # If all values are NaN or non-finite, fall back
+        if not np.any(np.isfinite(y)):
+            raise ValueError(
+                f"Series '{series_id}' has no finite values in '{y_col}'."
+            )
+
+        # If the series is constant (or almost), ETS isn't very meaningful;
+        # fall back to naive constant forecast.
+        if np.nanmax(y) - np.nanmin(y) < 1e-8:
+            return self._forecast_naive_one_series(series_id, pdf)
+
+        # STL decomposition
+        # Note: STL expects a 1D array/Series; we use seasonal_period from config.
+        stl = STL(y, period=c.seasonal_period, seasonal=13, robust=True)
+        stl_res = stl.fit()
+
+        seasonal = stl_res.seasonal
+        trend = stl_res.trend
+        resid = stl_res.resid
+
+        # Deseasonalized series = trend + resid
+        deseasonalized = trend + resid
+
+        # ETS model on deseasonalized series
+        # We allow smoothing_alpha to override the automatic optimization.
+        model = ExponentialSmoothing(
+            deseasonalized,
+            trend="add",
+            seasonal=None,
+            initialization_method="estimated",
+        )
+
+        if c.smoothing_alpha is None:
+            # Let statsmodels choose the smoothing parameter
+            model_fit = model.fit(optimized=True)
+        else:
+            model_fit = model.fit(
+                optimized=False,
+                smoothing_level=c.smoothing_alpha,
+            )
+
+        # Forecast on the deseasonalized scale
+        h = c.horizon
+        fcst_core = model_fit.forecast(h)
+
+        # Build seasonal pattern for the forecast horizon by repeating the
+        # last full seasonal period and truncating to horizon.
+        season_len = c.seasonal_period
+        if season_len <= 0:
+            raise ValueError("seasonal_period must be positive.")
+
+        # Use the last 'season_len' seasonal values as the template
+        seasonal_tail = seasonal[-season_len:]
+        # Tile enough times to cover the horizon
+        reps = int(np.ceil(h / season_len))
+        seasonal_future = np.tile(seasonal_tail, reps)[:h]
+
+        y_hat = fcst_core + seasonal_future
+
+        # Build future dates based on last observed date and time granularity
+        last_date = pd.to_datetime(pdf[c.date_col].max())
+
+        if c.time_granularity.lower() == "week":
+            # Weekly: step by 1 week
+            future_dates = pd.date_range(
+                start=last_date + pd.DateOffset(weeks=1),
+                periods=h,
+                freq="W",  # weekly; you could tweak to "W-SUN" / "W-MON" if desired
+            ).normalize()
+        elif c.time_granularity.lower() == "month":
+            # Monthly: step by 1 month, align on month start
+            future_dates = pd.date_range(
+                start=(last_date + pd.DateOffset(months=1)).replace(day=1),
+                periods=h,
+                freq="MS",  # Month Start
+            )
+        else:
+            raise ValueError(
+                f"Unsupported time_granularity '{c.time_granularity}'. "
+                "Expected 'week' or 'month'."
+            )
+
+        # Assemble forecast DataFrame
+        out = pd.DataFrame(
+            {
+                c.group_col: [series_id] * h,
+                c.date_col: future_dates,
+                "y_hat": y_hat,
+            }
+        )
+
+        return out
 
     def _forecast_short_series_panel(self, df_short: pd.DataFrame) -> pd.DataFrame:
         """
@@ -191,43 +378,66 @@ class TSForecaster:
 
         return pd.concat(results, ignore_index=True)
 
-    # ---------- Internal: per-series hooks (we'll plug your old code here) ----------
-
-    def _forecast_long_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
-    c = self.config
-
-    pdf = pdf.sort_values(c.date_col)
-    y_col = c.transformed_target_col if c.forecast_transformed_target and c.transformed_target_col in pdf.columns else c.target_col
-
-    y = pdf[y_col].to_numpy(dtype="float64")
-
-    # STL decomposition with configurable seasonal_period
-    stl = STL(y, period=c.seasonal_period, seasonal=13, robust=True)
-    result = stl.fit()
-    seasonal, trend, resid = result.seasonal, result.trend, result.resid
-
-    # ETS on trend + resid; optionally pass smoothing_alpha if not None
-    model = ExponentialSmoothing(
-        trend + resid,
-        trend="additive",
-        seasonal=None,
-        initialization_method="estimated",
-    )
-    model_fit = model.fit(
-        optimized=(c.smoothing_alpha is None),
-        smoothing_level=c.smoothing_alpha,
-    )
-
-    # Forecast horizon periods in Box-Cox or original space (depending on y_col)
-    fcst_core = model_fit.forecast(c.horizon)
-    # Add last seasonal pattern back
-    seasonal_tail = seasonal[-c.seasonal_period:]
-    # etc...
-
     def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
-    if self.config.short_series_strategy == "comp_based":
-        return self._forecast_short_comp_based(series_id, pdf)
-    elif self.config.short_series_strategy == "seasonal_naive":
-        return self._forecast_short_seasonal_naive(series_id, pdf)
-    else:
-        return self._forecast_short_naive(series_id, pdf)
+        if self.config.short_series_strategy == "comp_based":
+            return self._forecast_short_comp_based(series_id, pdf)
+        elif self.config.short_series_strategy == "seasonal_naive":
+            return self._forecast_short_seasonal_naive(series_id, pdf)
+        else:
+            return self._forecast_short_naive(series_id, pdf)
+        
+    def _forecast_naive_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
+        """
+        Very simple fallback forecaster for a single series:
+
+        - Uses the last observed target value as the forecast for all horizon steps.
+        - Works on the *original* target_col (not transformed).
+
+        This is used as a safety net when STL/ETS fails or when the series
+        is effectively constant.
+        """
+        c = self.config
+
+        pdf = pdf.copy()
+        pdf = pdf.sort_values(c.date_col)
+
+        if pdf.empty:
+            raise ValueError(f"Series '{series_id}' has no data; cannot forecast.")
+
+        if c.target_col not in pdf.columns:
+            raise ValueError(
+                f"Target column '{c.target_col}' not found for series '{series_id}'."
+            )
+
+        last_val = float(pdf[c.target_col].iloc[-1])
+        h = c.horizon
+
+        last_date = pd.to_datetime(pdf[c.date_col].max())
+
+        if c.time_granularity.lower() == "week":
+            future_dates = pd.date_range(
+                start=last_date + pd.DateOffset(weeks=1),
+                periods=h,
+                freq="W",
+            ).normalize()
+        elif c.time_granularity.lower() == "month":
+            future_dates = pd.date_range(
+                start=(last_date + pd.DateOffset(months=1)).replace(day=1),
+                periods=h,
+                freq="MS",
+            )
+        else:
+            raise ValueError(
+                f"Unsupported time_granularity '{c.time_granularity}'. "
+                "Expected 'week' or 'month'."
+            )
+
+        out = pd.DataFrame(
+            {
+                c.group_col: [series_id] * h,
+                c.date_col: future_dates,
+                "y_hat": np.full(h, last_val, dtype="float64"),
+            }
+        )
+
+        return out
