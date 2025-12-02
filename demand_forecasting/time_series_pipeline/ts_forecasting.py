@@ -18,10 +18,19 @@ class TSForecastConfig:
     date_col: str = "ds"
     short_flag_col: str = "is_short_series"
 
-    min_history_for_exp_smoothing: int = 2 * 52  # e.g. 2 years of weekly data
+    min_history_for_exp_smoothing: int = (2 * 52)  # e.g. 2 years of weekly data
     use_boxcox_for_forecasting: bool = False
 
     baseline_method: BaselineMethod = "seasonal_naive"
+
+    def __post_init__(self):
+        # ensure positive integers where needed
+        if self.horizon <= 0:
+            raise ValueError("horizon must be a positive integer")
+        if self.seasonal_period <= 0:
+            raise ValueError("seasonal_period must be a positive integer")
+        if self.min_history_for_exp_smoothing <= 0:
+            raise ValueError("min_history_for_exp_smoothing must be a positive integer")
 
 
 
@@ -68,7 +77,7 @@ class TSForecaster:
         # Combine
         all_fcst = pd.concat([long_fcst, short_fcst], ignore_index=True)
 
-        # Optional: attach baseline for later evaluation
+        # attach baseline for later evaluation
         baseline = self._compute_baseline_panel(df_panel)
         # You can join / align baseline later when you do metrics.
 
