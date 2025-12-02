@@ -8,6 +8,7 @@ from pyspark.sql import functions as F
 from datetime import timedelta
 from typing import Literal, Optional, Tuple
 
+from ts_forecast_utils import train_test_split_panel
 
 TimeGranularity = Literal["week", "month"]
 BaselineMethod = Literal["seasonal_naive"]  # can extend later
@@ -71,94 +72,6 @@ class TSForecastConfig:
             raise ValueError("short_series_strategy must be 'naive', 'seasonal_naive', or 'comp_based'")
 
 
-def train_test_split_panel(
-    df: SparkDataFrame,
-    config: TSForecastConfig,
-) -> tuple[SparkDataFrame, SparkDataFrame]:
-    """
-    Split a preprocessed Spark panel into train and test sets based on time.
-
-    Current behavior:
-    - Uses a *global* cutoff date based on the maximum date in the panel.
-    - Test set = all rows with date_col in (test_start_date, max_date]
-    - Train set = all rows with date_col <= test_start_date
-
-    Where:
-    - max_date is the maximum non-null value in config.date_col.
-    - test_start_date is computed as:
-        * week  : max_date - test_set_length * 1 week
-        * month : max_date - test_set_length * 1 month
-
-    This matches the spirit of your original notebook, but anchors to the data
-    itself (max ds) instead of wall-clock "today" / "last Sunday".
-
-    Parameters
-    ----------
-    df : SparkDataFrame
-        Preprocessed panel with at least config.date_col.
-    config : TSForecastConfig
-        Forecast configuration (uses date_col, test_set_length, time_granularity).
-
-    Returns
-    -------
-    (train_df, test_df) : tuple[SparkDataFrame, SparkDataFrame]
-        Two DataFrames with the same schema as df.
-    """
-    c = config
-
-    if c.date_col not in df.columns:
-        raise ValueError(
-            f"date_col '{c.date_col}' not found in DataFrame columns: {df.columns}"
-        )
-
-    # Get the maximum date from the panel
-    max_date_row = df.agg(F.max(c.date_col).alias("max_date")).collect()[0]
-    max_date = max_date_row["max_date"]
-
-    if max_date is None:
-        raise ValueError(
-            f"All values in date_col '{c.date_col}' are null; cannot perform time-based split."
-        )
-
-    gran = c.time_granularity.lower()
-
-    # Compute the start of the test window based on the configured granularity
-    if gran == "week":
-        # test_set_length is interpreted as number of weeks
-        test_start_date = max_date - timedelta(weeks=c.test_set_length)
-    elif gran == "month":
-        # For monthly data, use relativedelta to subtract whole months.
-        try:
-            from dateutil.relativedelta import relativedelta
-        except ImportError as e:
-            raise ImportError(
-                "dateutil is required for monthly train/test splits. "
-                "Install via 'pip install python-dateutil'."
-            ) from e
-
-        test_start_date = max_date - relativedelta(months=c.test_set_length)
-    else:
-        # Should be prevented by TSPreprocessingConfig/TSForecastConfig validation,
-        # but keep a defensive check in case of future changes.
-        raise ValueError(
-            f"Unsupported time_granularity '{c.time_granularity}'. "
-            "Expected 'week' or 'month'."
-        )
-
-    # Build train/test filters
-    # Test = dates strictly greater than test_start_date, up to and including max_date
-    test_df = df.filter(
-        (F.col(c.date_col) > F.lit(test_start_date))
-        & (F.col(c.date_col) <= F.lit(max_date))
-    )
-
-    # Train = dates less than or equal to test_start_date
-    train_df = df.filter(F.col(c.date_col) <= F.lit(test_start_date))
-
-    return train_df, test_df
-
-
-
 class TSForecaster:
     """
     Orchestrates panel forecasting:
@@ -171,7 +84,25 @@ class TSForecaster:
     def __init__(self, config: TSForecastConfig) -> None:
         self.config = config
 
-    # ---------- Public API ----------
+    def train_test_split(
+        self, df_panel_spark: SparkDataFrame
+    ) -> Tuple[SparkDataFrame, SparkDataFrame]:
+        """
+        Split the input panel DataFrame into train and test sets
+        based on the configuration.
+
+        Returns (train_df, test_df) as Spark DataFrames.
+        """
+        c = self.config
+
+        train_df, test_df = train_test_split_panel(
+            df=df_panel_spark,
+            date_col=c.date_col,
+            time_granularity=c.time_granularity,
+            test_set_length=c.test_set_length,
+        )
+
+        return train_df, test_df
 
     def forecast_panel_pandas(self, df_panel: pd.DataFrame) -> pd.DataFrame:
         """

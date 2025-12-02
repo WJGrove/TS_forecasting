@@ -1,4 +1,69 @@
 import pandas as pd
+from pyspark.sql import DataFrame as SparkDataFrame
+
+def train_test_split_panel(
+    df: SparkDataFrame,
+    *,
+    date_col: str,
+    test_set_length: int,
+    time_granularity: str = "week",
+) -> tuple[SparkDataFrame, SparkDataFrame]:
+    """
+    Split a preprocessed Spark panel into train and test sets based on time.
+
+    - Uses a *global* cutoff date based on the maximum date in the panel.
+    - Test set = all rows with date_col in (test_start_date, max_date]
+    - Train set = all rows with date_col <= test_start_date
+
+    test_set_length is interpreted as a number of periods:
+    - 'week'  -> weeks
+    - 'month' -> months
+    """
+
+    if date_col not in df.columns:
+        raise ValueError(
+            f"date_col '{date_col}' not found in DataFrame columns: {df.columns}"
+        )
+
+    max_date_row = df.agg(F.max(date_col).alias("max_date")).collect()[0]
+    max_date = max_date_row["max_date"]
+
+    if max_date is None:
+        raise ValueError(
+            f"All values in date_col '{date_col}' are null; cannot perform time-based split."
+        )
+
+    gran = time_granularity.lower()
+
+    if test_set_length <= 0:
+        raise ValueError("test_set_length must be a positive integer")
+
+    if gran == "week":
+        from datetime import timedelta
+
+        test_start_date = max_date - timedelta(weeks=test_set_length)
+    elif gran == "month":
+        try:
+            from dateutil.relativedelta import relativedelta
+        except ImportError as e:
+            raise ImportError(
+                "dateutil is required for monthly train/test splits. "
+                "Install via 'pip install python-dateutil'."
+            ) from e
+
+        test_start_date = max_date - relativedelta(months=test_set_length)
+    else:
+        raise ValueError(
+            f"Unsupported time_granularity '{time_granularity}'. "
+            "Expected 'week' or 'month'."
+        )
+
+    test_df = df.filter(
+        (F.col(date_col) > F.lit(test_start_date)) & (F.col(date_col) <= F.lit(max_date))
+    )
+    train_df = df.filter(F.col(date_col) <= F.lit(test_start_date))
+
+    return train_df, test_df
 
 def compute_wape(
     df_actual: pd.DataFrame,
