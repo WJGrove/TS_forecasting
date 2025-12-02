@@ -508,6 +508,7 @@ class TSForecaster:
         """
         return self._forecast_naive_one_series(series_id, pdf)
     
+    # how do we know anything about the seasonality of a short series? It's short!
     def _forecast_short_seasonal_naive(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
         Seasonal-naive forecast for a single short series:
