@@ -216,17 +216,51 @@ class TSForecaster:
 
     def _forecast_short_series_panel(self, df_short: pd.DataFrame) -> pd.DataFrame:
         """
-        Loop over short series and apply a simpler fallback forecast.
+        Forecast all 'short' series in a preprocessed panel (pandas).
+
+        Assumes df_short contains at least:
+        - config.group_col
+        - config.date_col
+        - config.target_col
+
+        Uses the configured short_series_strategy to choose how each series
+        is forecast (naive, seasonal_naive, or comp_based).
+
+        Returns a DataFrame with one row per (group, forecast_date):
+        - group_col
+        - date_col
+        - 'y_hat'
         """
         c = self.config
+
+        if df_short.empty:
+            return pd.DataFrame(
+                columns=[c.group_col, c.date_col, "y_hat"],
+                dtype="float64",
+            )
+
+        required_cols = {c.group_col, c.date_col, c.target_col}
+        missing = required_cols - set(df_short.columns)
+        if missing:
+            raise ValueError(
+                f"df_short is missing required columns for short-series forecasting: {missing}"
+            )
+
         results: list[pd.DataFrame] = []
 
         for series_id, pdf in df_short.groupby(c.group_col):
-            fcst = self._forecast_short_one_series(series_id, pdf)
-            results.append(fcst)
+            try:
+                fcst = self._forecast_short_one_series(series_id, pdf)
+            except Exception as exc:
+                # Safety net: don't let a single weird short series kill the run
+                print(
+                    f"[WARN] Failed to forecast short series '{series_id}' via "
+                    f"strategy '{c.short_series_strategy}': {exc!r}. "
+                    "Falling back to naive forecast for this series."
+                )
+                fcst = self._forecast_naive_one_series(series_id, pdf)
 
-        if not results:
-            return pd.DataFrame(columns=[c.group_col, c.date_col, c.target_col])
+            results.append(fcst)
 
         return pd.concat(results, ignore_index=True)
 
