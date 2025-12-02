@@ -10,15 +10,13 @@ import pandas as pd
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, DoubleType, BooleanType
 
-from typing import Literal
 
-TimeGranularity = Literal["week", "month"]
 
 def upsample_ts_groupwise(
     df: DataFrame,
     date_col: str = "ds",
     group_col: str = "time_series_id",
-    granularity: TimeGranularity = "week",
+    granularity: str = "week",
 ) -> DataFrame:
     """
     Fill in missing time periods within each series (group_col) by generating
