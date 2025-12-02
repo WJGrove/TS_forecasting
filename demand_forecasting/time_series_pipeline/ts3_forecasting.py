@@ -415,11 +415,35 @@ class TSForecaster:
         return out
 
     def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
-        if self.config.short_series_strategy == "comp_based":
-            return self._forecast_short_comp_based(series_id, pdf)
-        elif self.config.short_series_strategy == "seasonal_naive":
+        """
+        Dispatch short-series forecasting for a single series based on
+        config.short_series_strategy.
+
+        Strategies:
+        - 'naive'          -> repeat last observed value
+        - 'seasonal_naive' -> repeat the last full seasonal pattern (if available),
+                              otherwise fall back to naive
+        - 'comp_based'     -> (placeholder for comp-based logic)
+
+        Returns a DataFrame with:
+        - group_col
+        - date_col (future dates)
+        - 'y_hat'
+        """
+        strat = self.config.short_series_strategy
+
+        if strat == "naive":
+            return self._forecast_short_naive(series_id, pdf)
+        elif strat == "seasonal_naive":
             return self._forecast_short_seasonal_naive(series_id, pdf)
+        elif strat == "comp_based":
+            return self._forecast_short_comp_based(series_id, pdf)
         else:
+            # Defensive: should be blocked by config validation, but just in case
+            print(
+                f"[WARN] Unknown short_series_strategy '{strat}'. "
+                "Falling back to naive."
+            )
             return self._forecast_short_naive(series_id, pdf)
         
     def _forecast_naive_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
