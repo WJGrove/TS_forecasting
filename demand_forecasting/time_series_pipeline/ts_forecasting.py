@@ -85,6 +85,19 @@ class TSForecaster:
 
     # ---------- Internal: panel-level ----------
 
+    def _compute_baseline_panel(self, df_panel: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute a seasonal-naive baseline forecast for all series
+        for comparison purposes.
+
+        For now, this is just a stub: we’ll implement once the main
+        forecasting path is in place.
+        """
+        # e.g., we will:
+        # - for each series, take the last `seasonal_period` actuals,
+        # - align them as the horizon forecasts.
+        return pd.DataFrame()
+
     def _forecast_long_series_panel(self, df_long: pd.DataFrame) -> pd.DataFrame:
         """
         Loop over long series and forecast each one.
@@ -136,16 +149,4 @@ class TSForecaster:
         """
         raise NotImplementedError
     
-    def _compute_baseline_panel(self, df_panel: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute a seasonal-naive baseline forecast for all series
-        for comparison purposes.
-
-        For now, this is just a stub: we’ll implement once the main
-        forecasting path is in place.
-        """
-        # e.g., we will:
-        # - for each series, take the last `seasonal_period` actuals,
-        # - align them as the horizon forecasts.
-        return pd.DataFrame()
 
