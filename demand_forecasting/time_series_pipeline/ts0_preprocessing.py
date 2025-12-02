@@ -289,7 +289,11 @@ class TSPreprocessor:
         Derive the period key (date_col, e.g. 'ds') from the raw date column,
         according to the configured time_granularity.
 
-        Currently only 'week' is supported (weekly start-of-week).
+        Supported values:
+        - 'week'  : start-of-week date (Spark ISO week, typically Monday)
+        - 'month' : first day of the calendar month
+
+        The resulting column is always of DateType.
         """
         c = self.config
 
@@ -299,24 +303,28 @@ class TSPreprocessor:
             )
 
         gran = c.time_granularity.lower()
-
+        # Ensure we have a timestamp, then truncate to start-of-week and cast back to date.
+        base_ts = F.to_timestamp(F.col(c.raw_date_col))
+        
         if gran == "week":
-            # Ensure we have a timestamp, then truncate to start-of-week and cast back to date.
-            base_ts = F.to_timestamp(F.col(c.raw_date_col))
+            # Truncate to start of week (ISO week starts on Monday) and convert to date
             df = df.withColumn(
                 c.date_col,
                 F.to_date(F.date_trunc("week", base_ts)),
             )
-        # # Later, when all the functions are refactored, we can add support for daily:
-        # elif gran == "day":
-        #     df = df.withColumn(
-        #         c.date_col,
-        #         F.to_date(c.raw_date_col),
-        #     )
+
+        elif gran == "month":
+            # Truncate to first day of the calendar month and convert to date
+            df = df.withColumn(
+                c.date_col,
+                F.to_date(F.date_trunc("month", base_ts)),
+            )
+
         else:
+            # This should never happen due to earlier validation in the config(__post_init__)
             raise ValueError(
                 f"time_granularity '{c.time_granularity}' is not supported yet; "
-                "TSPreprocessor currently implements weekly processing only."
+                "TSPreprocessor currently implements weekly and monthly processing only."
             )
 
         return df
