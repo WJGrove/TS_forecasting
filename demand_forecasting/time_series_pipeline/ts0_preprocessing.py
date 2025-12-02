@@ -4,13 +4,14 @@ from datetime import datetime
 import pytz
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Literal
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-# The functions below are defined in a legacy reference folder and will be refactored after the preprocessing, diagnostics, and plotting modules are stable.
+# The functions below are defined in a legacy reference folder and will be
+#  refactored after the preprocessing, diagnostics, and plotting modules are stable.
 from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     upsample_weeklyts_groupwise,
     flag_data_prior_to_inactive_periods,
@@ -20,6 +21,9 @@ from demand_forecasting.legacy_folder.general_fc_functions_legacy import (
     interpolate_groupwise_numeric,
     boxcox_transform_groupwise,
 )
+
+
+TimeGranularity = Literal["week", "month"]
 
 
 @dataclass
@@ -63,7 +67,7 @@ class TSPreprocessingConfig:
     group_key_separator: str = "|"
 
     # Time axis configuration
-    time_granularity: str = "week"  # this is the period the analysis is done on
+    time_granularity: TimeGranularity = "week"  # "week" or "month"
 
     # Standardized column names for the date and value columns for processing
     value_col: str = "y"
@@ -81,16 +85,18 @@ class TSPreprocessingConfig:
 
     # Seasonality and thresholds:
     seasonal_period: int = 52
-    # the number of periods below which a series is considered "short" (e.g., weeks):
+    # the number of periods below which a series is considered "short":
     short_series_threshold: int = 52
     # the number of consecutive periods with 0s before you consider a series inactive:
     inactive_threshold: int = 4
-    # the number of periods...[doublecheck the function to word this comment properly]:
+    # the minimum number of periods with data required to keep a series:
     insufficient_data_threshold: int = 1
 
     outlier_threshold: float = 3.0  # standard deviations
 
-    # Diagnostics configuration (short/new series volume warning thresholds)
+    # Diagnostics configuration
+    # short/new series volume warning thresholds warn you if short series make up a significant
+    # portion of total volume
     short_series_vol_warn1: float = 3.0  # percent of total volume
     short_series_vol_warn2: float = 5.0  # percent of total volume
     short_series_vol_warn3: float = 10.0  # percent of total volume
@@ -107,10 +113,13 @@ class TSPreprocessingConfig:
             raise ValueError("insufficient_data_threshold must be positive")
         if self.outlier_threshold <= 0:
             raise ValueError("outlier_threshold must be positive")
-        if self.time_granularity.lower() not in {"week"}:
-            raise ValueError("time_granularity must be 'week'")
+        
+        # 2) Validate time granularity
+        gran = self.time_granularity.lower()
+        if gran not in {"week", "month"}:
+            raise ValueError("time_granularity must be 'week' or 'month'")
 
-        # 2) Fill defaults for lists
+        # 3) Fill defaults for lists
         if not self.numerical_cols:
             self.numerical_cols = [self.value_col, "y_clean"]
             if self.product_wavg_unit_price_col:
@@ -118,8 +127,8 @@ class TSPreprocessingConfig:
 
         if not self.cols_for_outlier_removal:
             self.cols_for_outlier_removal = [self.value_col]
-        
-        # 3) Validate interpolation method
+
+        # 4) Validate interpolation method
         if self.interpolation_method not in {"linear", "polynomial", "spline"}:
             raise ValueError(
                 "interpolation_method must be one of 'linear', 'polynomial', or 'spline'"
@@ -476,5 +485,5 @@ class TSPreprocessor:
             """
         )
 
-        
+
 # Later we can add some partitioning options
