@@ -503,17 +503,6 @@ def boxcox_transform_groupwise(
     return result_df
 
 
-# When you forecast a transformed series, you need to inverse transform the predictions and the prediction interval endpoints.
-# This means you'll need to join the lambda info to the forecast data on the group_col.
-
-import numpy as np
-import pandas as pd
-
-from scipy.special import inv_boxcox  # make sure scipy is installed
-from pyspark.sql import DataFrame
-from pyspark.sql.types import StructType
-
-
 def groupwise_inv_boxcox_transform(
     df: DataFrame,
     group_col: str = "time_series_id",
