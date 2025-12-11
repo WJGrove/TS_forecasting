@@ -50,7 +50,7 @@ class RAGConfig:
     max_history_turns: int = 6
 
     # Debug / verbosity
-    verbose: bool = True
+    verbose: bool = False
 
     def print(self, msg: str) -> None:
         """Helper to centralize verbose printing."""
