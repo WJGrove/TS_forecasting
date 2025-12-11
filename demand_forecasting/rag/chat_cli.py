@@ -62,7 +62,8 @@ def _chat_with_context(cfg: RAGConfig, question: str, context: str) -> str:
         - Only use information from the provided context when describing code.
         - Prefer to cite which file and function/class you're referring to.
         - If the answer is not clearly supported by the context, say you are unsure.
-        - Be concise but precise. The user is an experienced statistician.
+        - Be concise but precise. The user is experienced in mathematical and statistical
+        concepts but is less experienced with development.
         """
     ).strip()
 
