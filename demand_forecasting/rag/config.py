@@ -21,12 +21,18 @@ class RAGConfig:
 
     # Which files to include (relative to source_root)
     include_globs: List[str] = field(
-        default_factory=lambda: ["ts0_*.py", "ts1_*.py", "ts2_*.py", "ts3_*.py",
-                                 "ts_preprocessing_utils.py", "ts_forecast_utils.py"]
+        default_factory=lambda: [
+            "ts0_*.py",
+            "ts1_*.py",
+            "ts2_*.py",
+            "ts3_*.py",
+            "ts_preprocessing_utils.py",
+            "ts_forecast_utils.py",
+        ]
     )
 
     # Where to persist the built index
-    index_path: Path = Path(".rag_index.pkl")
+    index_path: Path = Path(".rag_index.pkl")  # Hidden file in repo root
 
     # OpenAI models (embedding vs chat are decoupled)
     embedding_model: str = "text-embedding-3-small"
@@ -38,6 +44,9 @@ class RAGConfig:
 
     # Retrieval config
     top_k: int = 4
+
+    # conversation history config
+    max_history_turns: int = 6
 
     # Debug / verbosity
     verbose: bool = True

@@ -27,6 +27,27 @@ def _embed_query(query: str, cfg: RAGConfig) -> np.ndarray:
     return embeds[0]
 
 
+def _build_retrieval_query(
+    question: str,
+    history: list[tuple[str, str]],
+    max_history_turns: int,
+) -> str:
+    """
+    Build the text we embed for retrieval.
+
+    We include a few recent user questions so follow-ups like
+    'and how is that decision made?' still pull the right chunks.
+    """
+    if not history:
+        return question
+
+    # Use just the user questions from recent turns
+    recent_user_questions = [q for (q, _a) in history[-max_history_turns:]]
+    previous_block = "\n\n".join(recent_user_questions)
+
+    return previous_block + "\n\nFollow-up question:\n" + question
+
+
 def _build_context_block(chunks: list[CodeChunk]) -> str:
     """
     Build a context string that the LLM will see, including filenames
@@ -44,9 +65,14 @@ def _build_context_block(chunks: list[CodeChunk]) -> str:
     return "\n".join(parts)
 
 
-def _chat_with_context(cfg: RAGConfig, question: str, context: str) -> str:
+def _chat_with_context(
+    cfg: RAGConfig,
+    question: str,
+    context: str,
+    history: list[tuple[str, str]],
+) -> str:
     """
-    Call the chat model with the given context + question.
+    Call the chat model with the given context + question + recent conversation history.
 
     All chat-model-specific logic lives here so it's easy to change models/providers.
     """
@@ -63,11 +89,12 @@ def _chat_with_context(cfg: RAGConfig, question: str, context: str) -> str:
         - Prefer to cite which file and function/class you're referring to.
         - If the answer is not clearly supported by the context, say you are unsure.
         - Be concise but precise. The user is experienced in mathematical and statistical
-        concepts but is less experienced with development.
+          concepts but is less experienced with development.
         """
     ).strip()
 
-    user_msg = textwrap.dedent(
+    # Current question including repo context
+    current_user_msg = textwrap.dedent(
         f"""
         Here is context from the repository:
 
@@ -78,12 +105,23 @@ def _chat_with_context(cfg: RAGConfig, question: str, context: str) -> str:
         """
     ).strip()
 
+    # Build messages: system + last N turns + current question
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": system_msg},
+    ]
+
+    # Add recent history so follow-ups like "and how is that decided?"
+    # still make sense to the model.
+    for prev_q, prev_a in history[-cfg.max_history_turns :]:
+        messages.append({"role": "user", "content": prev_q})
+        messages.append({"role": "assistant", "content": prev_a})
+
+    # Now the current turn with context
+    messages.append({"role": "user", "content": current_user_msg})
+
     resp = client.chat.completions.create(
         model=cfg.chat_model,
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg},
-        ],
+        messages=messages,
         temperature=0.1,  # low for code Q&A
     )
 
@@ -111,6 +149,9 @@ def main() -> None:
     print("Type questions about your codebase (or 'exit' to quit).")
     print()
 
+    # (user_question, assistant_answer) pairs
+    history: list[tuple[str, str]] = []
+
     while True:
         try:
             question = input(">> ").strip()
@@ -124,8 +165,15 @@ def main() -> None:
             print("Goodbye.")
             break
 
+        # --- Build retrieval query from current question + recent history ---
+        retrieval_query = _build_retrieval_query(
+            question,
+            history,
+            cfg.max_history_turns,
+        )
+
         # Embed query
-        q_embed = _embed_query(question, cfg)
+        q_embed = _embed_query(retrieval_query, cfg)
 
         # Retrieve top-k chunks
         results = search(index, q_embed, top_k=cfg.top_k)
@@ -139,12 +187,17 @@ def main() -> None:
         top_chunks = [c for (c, _) in results]
         context_str = _build_context_block(top_chunks)
 
-        # Call chat model
-        answer = _chat_with_context(cfg, question, context_str)
+        # Call chat model with history
+        answer = _chat_with_context(cfg, question, context_str, history)
 
         print()
         print(textwrap.fill(answer, width=100))
         print()
+
+        # Update history and trim
+        history.append((question, answer))
+        if len(history) > cfg.max_history_turns:
+            history = history[-cfg.max_history_turns :]
 
 
 if __name__ == "__main__":
