@@ -35,11 +35,12 @@ class RAGIndex:
 
 
 def _iter_python_files(cfg: RAGConfig) -> List[Path]:
-    """Return a list of Python files to index based on the config globs."""
+    """Return a list of Python files to index based on the config globs, recursively."""
     root = cfg.source_root
     paths: List[Path] = []
     for pattern in cfg.include_globs:
-        paths.extend(root.glob(pattern))
+        # rglob searches all subdirectories under root
+        paths.extend(root.rglob(pattern))
     # Deduplicate and sort for stability
     return sorted({p.resolve() for p in paths if p.is_file()})
 
