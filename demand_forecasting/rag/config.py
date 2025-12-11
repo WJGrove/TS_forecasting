@@ -37,13 +37,14 @@ class RAGConfig:
     # OpenAI models (embedding vs chat are decoupled)
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-4o-mini"
+    temperature: float = 0.1
 
     # Chunking config
     chunk_size_chars: int = 2000
     chunk_overlap_chars: int = 200
 
     # Retrieval config
-    top_k: int = 4
+    top_k: int = 8
 
     # conversation history config
     max_history_turns: int = 6

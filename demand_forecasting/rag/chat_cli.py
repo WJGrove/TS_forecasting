@@ -88,6 +88,7 @@ def _chat_with_context(
         - Only use information from the provided context when describing code.
         - Prefer to cite which file and function/class you're referring to.
         - If the answer is not clearly supported by the context, say you are unsure.
+        - When explaining a method or function, make mention of any obvious deviations from standard practices.
         - Be concise but precise. The user is experienced in mathematical and statistical
           concepts but is less experienced with development.
         """
@@ -122,7 +123,7 @@ def _chat_with_context(
     resp = client.chat.completions.create(
         model=cfg.chat_model,
         messages=messages,
-        temperature=0.1,  # low for code Q&A
+        temperature=cfg.temperature,
     )
 
     return resp.choices[0].message.content or ""
