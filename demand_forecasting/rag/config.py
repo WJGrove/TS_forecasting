@@ -22,12 +22,9 @@ class RAGConfig:
     # Which files to include (relative to source_root)
     include_globs: List[str] = field(
         default_factory=lambda: [
-            "ts0_*.py",
-            "ts1_*.py",
-            "ts2_*.py",
-            "ts3_*.py",
-            "ts_preprocessing_utils.py",
-            "ts_forecast_utils.py",
+            "time_series_pipeline/*.py",
+            "rag/*.py",
+            # "Aider/*.py"
         ]
     )
 
