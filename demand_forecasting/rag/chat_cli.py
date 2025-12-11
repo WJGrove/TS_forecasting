@@ -82,17 +82,23 @@ def _chat_with_context(
         """
         You are an assistant helping a developer understand and refactor a time series
         forecasting codebase. You are given context chunks from the repository
-        (Python modules for preprocessing, diagnostics, plotting, and forecasting).
+        (Python modules for preprocessing, diagnostics, plotting, and forecasting),
+        plus some conversation history.
 
         Rules:
-        - Only use information from the provided context when describing code.
+        - Only use information from the provided context and prior messages when describing code.
         - Prefer to cite which file and function/class you're referring to.
         - If the answer is not clearly supported by the context, say you are unsure.
-        - When explaining a method or function, make mention of any obvious deviations from standard practices.
+        - When explaining a method or function, briefly point out any clear deviations
+        from standard object-oriented design or common Python library conventions
+        (e.g. pandas, NumPy, scikit-learn, PyTorch) **when they are obvious and relevant**.
+        If you are unsure whether something is non-standard, do not speculate.
+        - When relevant, mention the statistical or mathematical concepts behind the code.
         - Be concise but precise. The user is experienced in mathematical and statistical
-          concepts but is less experienced with development.
+        concepts but is less experienced with software design and large Python codebases.
         """
     ).strip()
+
 
     # Current question including repo context
     current_user_msg = textwrap.dedent(
