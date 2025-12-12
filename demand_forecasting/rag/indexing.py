@@ -53,6 +53,12 @@ def _split_file_into_chunks(path: Path, cfg: RAGConfig) -> List[CodeChunk]:
     - Each chunk is then optionally re-split if it's too long in characters.
     """
     text = path.read_text(encoding="utf-8")
+
+    if not text.strip():
+        # Completely empty / whitespace-only file – nothing useful to index.
+        cfg.print(f"Skipping empty file: {path}")
+        return []
+
     lines = text.splitlines()
 
     boundaries: List[int] = []
@@ -202,14 +208,30 @@ def build_index(cfg: RAGConfig) -> RAGIndex:
         cfg.print(f"     {len(chunks)} chunk(s) from this file.")
         all_chunks.extend(chunks)
 
-    cfg.print(f"Total chunks: {len(all_chunks)}")
-    texts = [c.text for c in all_chunks]
+    cfg.print(f"Total chunks (before filtering): {len(all_chunks)}")
+
+    # Drop completely empty or whitespace-only chunks.
+    nonempty_chunks: List[CodeChunk] = []
+    for c in all_chunks:
+        if isinstance(c.text, str) and c.text.strip():
+            nonempty_chunks.append(c)
+        else:
+            cfg.print(f"Skipping empty chunk from {c.file_path} (id={c.id})")
+
+    if not nonempty_chunks:
+        raise RuntimeError(
+            "All extracted chunks are empty or whitespace. Nothing to index."
+        )
+
+    cfg.print(f"Total chunks (after filtering empties): {len(nonempty_chunks)}")
+
+    texts = [c.text for c in nonempty_chunks]
 
     cfg.print("Embedding chunks...")
     embeddings = _embed_texts(texts, cfg)
     cfg.print(f"Embeddings shape: {embeddings.shape}")
 
-    index = RAGIndex(config=cfg, chunks=all_chunks, embeddings=embeddings)
+    index = RAGIndex(config=cfg, chunks=nonempty_chunks, embeddings=embeddings)
 
     cfg.print(f"Saving index to {cfg.index_path} ...")
     with cfg.index_path.open("wb") as f:
