@@ -33,3 +33,6 @@ data/
 .vscode/*.code-snippets
 
 .aider*
+
+# RAG index cache
+*.pkl
