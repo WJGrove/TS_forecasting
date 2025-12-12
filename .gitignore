@@ -32,3 +32,4 @@ data/
 # VS Code: keep workspace configs, ignore junk
 .vscode/*.code-snippets
 
+.aider*
