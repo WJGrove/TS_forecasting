@@ -5,7 +5,7 @@ from __future__ import annotations
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Sequence
 
 import numpy as np
 from openai import OpenAI
@@ -53,6 +53,12 @@ def _split_file_into_chunks(path: Path, cfg: RAGConfig) -> List[CodeChunk]:
     - Each chunk is then optionally re-split if it's too long in characters.
     """
     text = path.read_text(encoding="utf-8")
+
+    if not text.strip():
+        # Completely empty / whitespace-only file – nothing useful to index.
+        cfg.print(f"Skipping empty file: {path}")
+        return []
+
     lines = text.splitlines()
 
     boundaries: List[int] = []
@@ -143,29 +149,36 @@ def _maybe_subsplit_chunk(chunk: CodeChunk, cfg: RAGConfig) -> List[CodeChunk]:
     return subchunks
 
 
-def _embed_texts(texts: List[str], cfg: RAGConfig) -> np.ndarray:
+def _embed_texts(texts: Sequence[str], cfg: RAGConfig) -> np.ndarray:
     """
-    Embed a list of texts using OpenAI embeddings.
+    Call the OpenAI embeddings API with a *list of strings* and return
+    a 2D numpy array [n_texts, embedding_dim].
 
-    All embedding logic is centralized here so it's easy to swap providers/models.
+    Defensive checks are included so we fail fast if input is malformed,
+    instead of getting a vague 400 from the API.
     """
+    # 1) Basic validations
+    if not texts:
+        raise ValueError("No texts provided to _embed_texts; got an empty list.")
+
+    for i, t in enumerate(texts):
+        if not isinstance(t, str):
+            raise TypeError(
+                f"_embed_texts expected all items to be str, "
+                f"but texts[{i}] has type {type(t)!r}"
+            )
+
     client = OpenAI()
 
-    # OpenAI API accepts up to N inputs per call; for simplicity, we batch naively.
-    batch_size = 64
-    all_embeds: List[np.ndarray] = []
+    # 2) Call embeddings endpoint with the correct schema:
+    resp = client.embeddings.create(
+        model=cfg.embedding_model,
+        input=list(texts),
+    )
 
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        resp = client.embeddings.create(
-            model=cfg.embedding_model,
-            input=batch,
-        )
-        # resp.data[i].embedding is a list[float]
-        embeds = np.array([d.embedding for d in resp.data], dtype="float32")
-        all_embeds.append(embeds)
-
-    return np.vstack(all_embeds)
+    # 3) Extract the embeddings into a 2D float32 array
+    vectors = [np.array(d.embedding, dtype="float32") for d in resp.data]
+    return np.vstack(vectors)
 
 
 def build_index(cfg: RAGConfig) -> RAGIndex:
@@ -195,14 +208,30 @@ def build_index(cfg: RAGConfig) -> RAGIndex:
         cfg.print(f"     {len(chunks)} chunk(s) from this file.")
         all_chunks.extend(chunks)
 
-    cfg.print(f"Total chunks: {len(all_chunks)}")
-    texts = [c.text for c in all_chunks]
+    cfg.print(f"Total chunks (before filtering): {len(all_chunks)}")
+
+    # Drop completely empty or whitespace-only chunks.
+    nonempty_chunks: List[CodeChunk] = []
+    for c in all_chunks:
+        if isinstance(c.text, str) and c.text.strip():
+            nonempty_chunks.append(c)
+        else:
+            cfg.print(f"Skipping empty chunk from {c.file_path} (id={c.id})")
+
+    if not nonempty_chunks:
+        raise RuntimeError(
+            "All extracted chunks are empty or whitespace. Nothing to index."
+        )
+
+    cfg.print(f"Total chunks (after filtering empties): {len(nonempty_chunks)}")
+
+    texts = [c.text for c in nonempty_chunks]
 
     cfg.print("Embedding chunks...")
     embeddings = _embed_texts(texts, cfg)
     cfg.print(f"Embeddings shape: {embeddings.shape}")
 
-    index = RAGIndex(config=cfg, chunks=all_chunks, embeddings=embeddings)
+    index = RAGIndex(config=cfg, chunks=nonempty_chunks, embeddings=embeddings)
 
     cfg.print(f"Saving index to {cfg.index_path} ...")
     with cfg.index_path.open("wb") as f:

@@ -99,7 +99,6 @@ def _chat_with_context(
         """
     ).strip()
 
-
     # Current question including repo context
     current_user_msg = textwrap.dedent(
         f"""
@@ -149,6 +148,19 @@ def main() -> None:
     cfg.print("=== Repo RAG Assistant ===")
     index = _ensure_index(cfg)
 
+    index_path_str = str(cfg.index_path)
+
+    # always show this reminder (even if cfg.verbose is False)
+    print()
+    print(
+        "If you add or remove code files and want to rebuild the index,\n"
+        f"delete the index file ({index_path_str}) and rerun the RAG CLI.\n"
+    )
+    print(
+        "Type 'files', ':files', '::files', or 'filelist' at any time to see which source files are currently in the index."
+    )
+    print()
+
     cfg.print(
         f"Index ready: {len(index.chunks)} chunks from {len(set(c.file_path for c in index.chunks))} files."
     )
@@ -171,6 +183,14 @@ def main() -> None:
         if question.lower() in {"exit", "quit"}:
             print("Goodbye.")
             break
+        if question.lower() in {"files", ":files", "::files", "filelist"}:
+            # Show the unique files represented in the current index
+            files = sorted({chunk.file_path for chunk in index.chunks})
+            print("Files in current index:")
+            for path in files:
+                print(f"  - {path}")
+            print()
+            continue
 
         # --- Build retrieval query from current question + recent history ---
         retrieval_query = _build_retrieval_query(
