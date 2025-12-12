@@ -24,7 +24,6 @@ class RAGConfig:
         default_factory=lambda: [
             "time_series_pipeline/*.py",
             "rag/*.py",
-            # "Aider/*.py"
         ]
     )
 
