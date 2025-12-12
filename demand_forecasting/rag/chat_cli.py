@@ -152,7 +152,6 @@ def main() -> None:
 
     # always show this reminder (even if cfg.verbose is False)
     print()
-    print(f"Index file: {cfg.index_path}")
     print(
         "If you add or remove code files and want to rebuild the index,\n"
         f"delete the index file ({index_path_str}) and rerun the RAG CLI.\n"
