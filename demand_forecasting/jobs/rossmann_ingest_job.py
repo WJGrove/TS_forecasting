@@ -59,9 +59,36 @@ def load_and_merge_rossmann() -> pd.DataFrame:
 
     return df
 
+def _normalize_dtypes_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize column dtypes so pyarrow can write parquet cleanly.
+
+    - Ensure ds is datetime.
+    - Force known categorical/text columns to string to avoid mixed-type object columns.
+    """
+    # 1) Ensure ds is datetime
+    if "ds" in df.columns:
+        df["ds"] = pd.to_datetime(df["ds"], errors="coerce")
+
+    # 2) Columns that should be treated as text
+    string_cols = [
+        "time_series_id",
+        "StateHoliday",
+        "StoreType",
+        "Assortment",
+        "PromoInterval",
+    ]
+
+    for col in string_cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string")  # or .astype(str)
+
+    return df
 
 def main() -> None:
     df = load_and_merge_rossmann()
+
+    df = _normalize_dtypes_for_parquet(df)
 
     # Quick sanity prints so you can see what's going on
     print(f"Rows: {len(df):,}")
