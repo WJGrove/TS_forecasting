@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from scipy.stats import norm
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.seasonal import STL
 
@@ -190,7 +191,7 @@ class TSForecaster:
         # Just in case someone passes an empty panel
         if df_long.empty:
             return pd.DataFrame(
-                columns=[c.group_col, c.date_col, "y_hat"],
+                columns=[c.group_col, c.date_col, "y_hat", "y_hat_lower", "y_hat_upper"],
                 dtype="float64",
             )
 
@@ -236,7 +237,7 @@ class TSForecaster:
 
         if df_short.empty:
             return pd.DataFrame(
-                columns=[c.group_col, c.date_col, "y_hat"],
+                columns=[c.group_col, c.date_col, "y_hat", "y_hat_lower", "y_hat_upper"],
                 dtype="float64",
             )
 
@@ -280,11 +281,14 @@ class TSForecaster:
         - Forecast `horizon` steps ahead.
         - Add back the seasonal component by repeating the last seasonal period.
         - Generate future dates based on time_granularity (week or month).
+        - Compute simple symmetric prediction intervals using residual variance.
 
         Returns a DataFrame with:
         - group_col
         - date_col (future dates)
-        - 'y_hat' (point forecast in the same space as the modeling target)
+        - 'y_hat'
+        - 'y_hat_lower'
+        - 'y_hat_upper'
         """
         c = self.config
 
@@ -322,31 +326,27 @@ class TSForecaster:
                 f"min_history_for_exp_smoothing={c.min_history_for_exp_smoothing}."
             )
 
-        # If all values are NaN or non-finite, fall back
         if not np.any(np.isfinite(y)):
             raise ValueError(
                 f"Series '{series_id}' has no finite values in '{y_col}'."
             )
 
-        # If the series is constant (or almost), ETS isn't very meaningful;
-        # fall back to naive constant forecast.
+        # If the series is effectively constant, fall back to naive
         if np.nanmax(y) - np.nanmin(y) < 1e-8:
             return self._forecast_naive_one_series(series_id, pdf)
 
         # STL decomposition
-        # Note: STL expects a 1D array/Series; we use seasonal_period from config.
         stl = STL(y, period=c.seasonal_period, seasonal=13, robust=True)
         stl_res = stl.fit()
 
         seasonal = stl_res.seasonal
         trend = stl_res.trend
-        resid = stl_res.resid
+        resid_stl = stl_res.resid
 
         # Deseasonalized series = trend + resid
-        deseasonalized = trend + resid
+        deseasonalized = trend + resid_stl
 
         # ETS model on deseasonalized series
-        # We allow smoothing_alpha to override the automatic optimization.
         model = ExponentialSmoothing(
             deseasonalized,
             trend="add",
@@ -355,7 +355,6 @@ class TSForecaster:
         )
 
         if c.smoothing_alpha is None:
-            # Let statsmodels choose the smoothing parameter
             model_fit = model.fit(optimized=True)
         else:
             model_fit = model.fit(
@@ -367,36 +366,57 @@ class TSForecaster:
         h = c.horizon
         fcst_core = model_fit.forecast(h)
 
-        # Build seasonal pattern for the forecast horizon by repeating the
-        # last full seasonal period and truncating to horizon.
+        # Build seasonal pattern for the forecast horizon
         season_len = c.seasonal_period
         if season_len <= 0:
             raise ValueError("seasonal_period must be positive.")
 
-        # Use the last 'season_len' seasonal values as the template
         seasonal_tail = seasonal[-season_len:]
-        # Tile enough times to cover the horizon
         reps = int(np.ceil(h / season_len))
         seasonal_future = np.tile(seasonal_tail, reps)[:h]
 
         y_hat = fcst_core + seasonal_future
 
-        # Build future dates based on last observed date and time granularity
+        # ---- Simple symmetric prediction intervals (Gaussian approximation) ----
+        # Use ETS residuals on the deseasonalized series as noise estimate
+        fitted = np.asarray(model_fit.fittedvalues, dtype="float64")
+        resid_ets = deseasonalized - fitted
+
+        finite_resid = resid_ets[np.isfinite(resid_ets)]
+        if finite_resid.size > 1:
+            sigma = float(np.nanstd(finite_resid, ddof=1))
+        else:
+            sigma = 0.0
+
+        alpha = c.stats_alpha
+        z = float(norm.ppf(1.0 - alpha / 2.0))
+
+        # For now, use a constant band: y_hat ± z * sigma
+        # Refine this later to widen with horizon.
+        margin = z * sigma
+        if margin < 0 or not np.isfinite(margin):
+            margin = 0.0
+
+        y_hat_lower = y_hat - margin
+        y_hat_upper = y_hat + margin
+
+        # Optional: clamp lower to zero if your target is nonnegative counts
+        # y_hat_lower = np.maximum(y_hat_lower, 0.0)
+
+        # Build future dates
         last_date = pd.to_datetime(pdf[c.date_col].max())
 
         if c.time_granularity.lower() == "week":
-            # Weekly: step by 1 week
             future_dates = pd.date_range(
                 start=last_date + pd.DateOffset(weeks=1),
                 periods=h,
-                freq="W",  # weekly; you could tweak to "W-SUN" / "W-MON" if desired
+                freq="W",
             ).normalize()
         elif c.time_granularity.lower() == "month":
-            # Monthly: step by 1 month, align on month start
             future_dates = pd.date_range(
                 start=(last_date + pd.DateOffset(months=1)).replace(day=1),
                 periods=h,
-                freq="MS",  # Month Start
+                freq="MS",
             )
         else:
             raise ValueError(
@@ -404,16 +424,18 @@ class TSForecaster:
                 "Expected 'week' or 'month'."
             )
 
-        # Assemble forecast DataFrame
         out = pd.DataFrame(
             {
                 c.group_col: [series_id] * h,
                 c.date_col: future_dates,
                 "y_hat": y_hat,
+                "y_hat_lower": y_hat_lower,
+                "y_hat_upper": y_hat_upper,
             }
         )
 
         return out
+
 
     def _forecast_short_one_series(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
@@ -453,9 +475,7 @@ class TSForecaster:
 
         - Uses the last observed target value as the forecast for all horizon steps.
         - Works on the *original* target_col (not transformed).
-
-        This is used as a safety net when STL/ETS fails or when the series
-        is effectively constant.
+        - For now, sets y_hat_lower == y_hat_upper == y_hat (no uncertainty model).
         """
         c = self.config
 
@@ -493,15 +513,20 @@ class TSForecaster:
                 "Expected 'week' or 'month'."
             )
 
+        y_hat = np.full(h, last_val, dtype="float64")
+
         out = pd.DataFrame(
             {
                 c.group_col: [series_id] * h,
                 c.date_col: future_dates,
-                "y_hat": np.full(h, last_val, dtype="float64"),
+                "y_hat": y_hat,
+                "y_hat_lower": y_hat,
+                "y_hat_upper": y_hat,
             }
         )
 
         return out
+
     # ---------- Internal: short-series strategies ----------
     def _forecast_short_naive(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
@@ -581,10 +606,13 @@ class TSForecaster:
                 c.group_col: [series_id] * h,
                 c.date_col: future_dates,
                 "y_hat": fcst_vals,
+                "y_hat_lower": fcst_vals,
+                "y_hat_upper": fcst_vals,
             }
         )
 
         return out
+
     
     def _forecast_short_comp_based(self, series_id: str, pdf: pd.DataFrame) -> pd.DataFrame:
         """
