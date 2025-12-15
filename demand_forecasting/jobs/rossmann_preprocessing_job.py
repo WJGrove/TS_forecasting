@@ -1,37 +1,60 @@
-# The first ten lines of this file are only needed for testing and debugging locally, outside of Databricks.
+# demand_forecasting/time_series_pipeline/rossmann_preprocessing_job.py
+
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
 from pyspark.sql import SparkSession, functions as F
 
-# Create a local SparkSession
+from demand_forecasting.time_series_pipeline.ts0_preprocessing import (
+    TSPreprocessingConfig,
+    TSPreprocessor,
+)
+from demand_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostics
+from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
+
+
+# --------------------------------------------------------------------------------------
+# Local SparkSession for testing/debugging (Databricks would provide spark for you)
+# --------------------------------------------------------------------------------------
 spark = (
     SparkSession.builder.appName("ts-preprocessing-job")
     .master("local[*]")  # use all local cores
     .getOrCreate()
 )
-# Everything above this line is only needed for testing and debugging locally, outside of Databricks.
-
-import time
-
-from pyspark.sql import functions as F
-
-from demand_forecasting.time_series_pipeline.ts0_preprocessing import TSPreprocessingConfig, TSPreprocessor
-from demand_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostics
-from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
 
 
 def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     t_start_all = time.time()
 
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
+    # Locate the Rossmann panel parquet relative to this package
+    # ----------------------------------------------------------------------------------
+    base_dir = Path(__file__).resolve().parents[1]  # .../demand_forecasting
+    data_dir = base_dir / "data" / "kaggle_rossmann"
+    panel_path = data_dir / "rossmann_panel.parquet"
+
+    print(f"Loading Rossmann panel from: {panel_path}")
+    df_panel = spark.read.parquet(str(panel_path))
+
+    # Register as a temp view so TSPreprocessor.load_source_data() can use SQL
+    df_panel.createOrReplaceTempView("rossmann_panel")
+
+    # ----------------------------------------------------------------------------------
     # Config and preprocessor
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     config = TSPreprocessingConfig(
-        source_table="demand_forecasting/data/kaggle_rossmann/rossmann_panel.parquet",
-        output_catalog="demand_forecasting/data/kaggle_rossmann",
+        # use the temp view name here, not a filesystem path
+        source_table="rossmann_panel",
+        # for local Spark, "default" is usually fine
+        output_catalog="default",
         output_table_name="rossmann_panel_preprocessed",
         raw_date_col="ds",
         raw_value_col="y",
         group_col="time_series_id",
-        facility_col="time_series_id", # this happens to be store id in Rossmann
+        # facility dims you added to the config
+        facility_col="time_series_id",  # here, facility == store id
         facility_dim_col1="StoreType",
         facility_dim_col2="Assortment",
         interpolation_method="linear",
@@ -39,28 +62,43 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         short_series_threshold=52 * 2,  # 2 years of weekly data
         inactive_threshold=3,
         insufficient_data_threshold=1,
-        outlier_threshold=3.0
+        outlier_threshold=3.0,
     )
 
     pre = TSPreprocessor(spark, config)
 
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     # Layer 1: preprocessing
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     t0 = time.time()
-    df_final = pre.run(with_boxcox=use_boxcox)   # <-- toggle Box-Cox here
+    df_final = pre.run(with_boxcox=use_boxcox)
     t1 = time.time()
+
+    # Write as a Spark table (in the local metastore)
     pre.write_output_table(df_final)
     t2 = time.time()
 
-    print("\n=== Layer 1: preprocessing ===")
-    print(f"  Transform runtime (TSPreprocessor.run, boxcox={use_boxcox}): {t1 - t0:.2f} sec")
-    print(f"  Write runtime (write_output_table):                         {t2 - t1:.2f} sec")
-    print(f"  Total Layer 1 runtime:                                      {t2 - t0:.2f} sec")
+    # Also write a parquet so you can inspect it easily with pandas if you want
+    out_parquet_path = data_dir / "rossmann_panel_preprocessed.parquet"
+    df_final.write.mode("overwrite").parquet(str(out_parquet_path))
 
-    # -----------------------------
+    print("\n=== Layer 1: preprocessing ===")
+    print(
+        f"  Transform runtime (TSPreprocessor.run, boxcox={use_boxcox}): {t1 - t0:.2f} sec"
+    )
+    print(
+        f"  Write runtime (write_output_table):                         {t2 - t1:.2f} sec"
+    )
+    print(
+        f"  Total Layer 1 runtime:                                      {t2 - t0:.2f} sec"
+    )
+    print(
+        f"  Preprocessed parquet written to:                             {out_parquet_path}"
+    )
+
+    # ----------------------------------------------------------------------------------
     # Layer 2: diagnostics
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     t_diag_start = time.time()
     diagnostics = TSDiagnostics(spark, config, df_final)
 
@@ -90,9 +128,9 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     print("\n--- Example of series-level summary ---")
     series_summary_df.show(10, truncate=False)
 
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     # Layer 3: plots (optional)
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     if run_plots:
         t_plot_start = time.time()
 
@@ -106,7 +144,7 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         plotter.plot_series_volume_histogram(diagnostics, value_col="y_clean")
         plotter.plot_volume_vs_length_scatter(diagnostics, value_col="y_clean")
 
-        # 3.2 Short series by dims (customer_*, product_*)
+        # 3.2 Short series by dims (customer_*, product_*, facility_*)
         print("\n=== Layer 3: plotting (short series by dimension) ===")
         plotter.plot_short_series_by_all_dims(
             diagnostics,
@@ -114,18 +152,22 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
             prefixes=("customer_", "product_", "facility_"),
         )
 
-        # Build the list of dim columns we’ll use for 3.3 and 3.4:
-        #   - only dims that start with "customer_" or "product_" or "facility_"
-        #   - and are actually present in df_final
+        # Build list of dim columns present in df_final
         dim_cols_for_customer_product = [
             col
             for col in config.dim_cols
-            if (col.startswith("customer_") or col.startswith("product_") or col.startswith("facility_"))
+            if (
+                col.startswith("customer_")
+                or col.startswith("product_")
+                or col.startswith("facility_")
+            )
             and col in df_final.columns
         ]
 
-        # 3.3 Volume by dimension (T52) for ALL such dims
-        print("\n=== Layer 3: plotting (T52 volume by customer_/product_/facility_ dims) ===")
+        # 3.3 Volume by dimension (T52) for these dims
+        print(
+            "\n=== Layer 3: plotting (T52 volume by customer_/product_/facility_ dims) ==="
+        )
         for dim_col in dim_cols_for_customer_product:
             print(f"\n--- Volume by {dim_col} (last 52 periods) ---")
             plotter.plot_volume_by_dimension(
@@ -135,10 +177,11 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
                 last_n_weeks=52,
             )
 
-        # 3.4 Year/day-of-year profiles for ALL such dims
-        print("\n=== Layer 3: plotting (year vs day-of-year profiles) for Leader of each dimension ===")
+        # 3.4 Year/day-of-year profiles for top value of each dim
+        print(
+            "\n=== Layer 3: plotting (year vs day-of-year profiles) for leader of each dimension ==="
+        )
         for dim_col in dim_cols_for_customer_product:
-            # Find the top value of this dim by total volume (overall) to use as our representative
             top_val_row = (
                 df_final.groupBy(dim_col)
                 .agg(F.sum("y_clean").alias("total_volume"))
@@ -146,7 +189,6 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
                 .limit(1)
                 .collect()
             )
-
             if not top_val_row:
                 continue
 
@@ -159,25 +201,23 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
                 value_col="y_clean",
             )
 
-            # One plot per dim: multi-year lines for the single top category
             plotter.plot_year_day_lines_for_dimension(
                 year_day_df,
                 dim_col=dim_col,
                 dim_value=dim_value,
                 value_label="Sum of y_clean",
-                use_3d=False,  # flip to True if you want the 3D view
+                use_3d=False,
             )
 
         t_plot_end = time.time()
         print("\n=== Layer 3: plotting ===")
         print(f"  Runtime: {t_plot_end - t_plot_start:.2f} sec")
 
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     # Overall
-    # -----------------------------
+    # ----------------------------------------------------------------------------------
     t_overall_end = time.time()
     print("\n=== Overall runtime ===")
-    # print one message for if plots were run or not
     if run_plots:
         print("  (including Layer 3: plotting)")
     else:
@@ -186,8 +226,4 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
 
 
 if __name__ == "__main__":
-    # Example usage:
-    #   - run_plots=False for “just ETL + diagnostics” in production jobs
-    #   - use_boxcox=False if you want a quick run without transformation
     main(run_plots=True, use_boxcox=True)
-
