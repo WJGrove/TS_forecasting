@@ -36,13 +36,13 @@ class TSPreprocessingConfig:
 
     # source and destination tables
     source_table: str = "source table name here"
-    output_catalog: str = "forecast_dev.data_science"
+    output_catalog: str = "save location name here"
     output_table_name: str = "ts_preprocessed"
 
     # Column names in the input table
-    raw_value_col: str = "ordered_qty"
-    raw_date_col: str = "req_del_fw_start_date"
-    group_col: str = "time_series_id"
+    raw_value_col: str = "y"
+    raw_date_col: str = "date"
+    group_col: str = "store"
 
     customer_parent_company_col: str | None = "parent_company_fc"
     customer_col: str | None = "soldto_id"
