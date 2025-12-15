@@ -1,5 +1,3 @@
-# demand_forecasting/time_series_pipeline/rossmann_preprocessing_job.py
-
 from __future__ import annotations
 
 import time
