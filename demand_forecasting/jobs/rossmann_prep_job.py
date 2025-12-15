@@ -29,20 +29,15 @@ ROSSMANN_PANEL_PARQUET = Path(
     "demand_forecasting/data/kaggle_rossmann/rossmann_panel.parquet"
 )
 
+
 def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     t_start_all = time.time()
 
-    # ----------------------------------------------------------------------------------
-    # Locate the Rossmann panel parquet relative to this package
-    # ----------------------------------------------------------------------------------
-    base_dir = Path(__file__).resolve().parents[1]  # .../demand_forecasting
-    data_dir = base_dir / "data" / "kaggle_rossmann"
-    panel_path = data_dir / "rossmann_panel.parquet"
+    # Make sure a database exists for outputs (local dev)
+    spark.sql("CREATE DATABASE IF NOT EXISTS forecast_local")
 
-    print(f"Loading Rossmann panel from: {panel_path}")
-    df_panel = spark.read.parquet(str(panel_path))
-
-    # Register as a temp view so TSPreprocessor.load_source_data() can use SQL
+    # Read the Rossmann panel parquet and expose as a temp view
+    df_panel = spark.read.parquet(str(ROSSMANN_PANEL_PARQUET))
     df_panel.createOrReplaceTempView("rossmann_panel")
 
     # ----------------------------------------------------------------------------------
@@ -51,15 +46,18 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     config = TSPreprocessingConfig(
         source_table="rossmann_panel",
         # for local Spark, "default" is usually fine
-        output_catalog="default",
+        output_catalog="forecast_local",
         output_table_name="rossmann_panel_preprocessed",
+
         raw_date_col="ds",
         raw_value_col="y",
         group_col="time_series_id",
+
         facility_col="time_series_id",  # here, facility == store id , which is same as time_series_id
-        time_granularity="week",
         facility_dim_col1="StoreType",
         facility_dim_col2="Assortment",
+
+        time_granularity="week",
         interpolation_method="linear",
         seasonal_period=52,
         short_series_threshold=52 * 2,  # 2 years of weekly data
