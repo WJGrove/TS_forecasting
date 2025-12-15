@@ -115,9 +115,9 @@ def compute_wape(
 
 
 # Evaluation layer (metrics + interpretation)
-# we'll add compute_mape, compute_rmse, and compute_mae later
+# add at least compute_mape, compute_rmse, and compute_mae functions here
 
-# Option A – metrics only on modeled series
+# A – metrics only on modeled series - this is used for model development and tuning.
     # Compute WAPE/MAE/etc. only on the subset you actually forecasted.
     # Then separately report:
 
@@ -125,10 +125,10 @@ def compute_wape(
 
     # % of total test-set volume covered by modeled series.
 
-# Option B – metrics on full panel (uglier but “real-world”)
-    # If you set unmodeled short-series forecasts to zero, they’ll blow up WAPE/WMAE when short-series volume is big. This is “truthful” from a total-system point of view, but can obscure how well your model works where you actually applied it.
+# B – metrics on full panel (uglier but “real-world”)
+    # Set unmodeled short-series forecasts to zero (pretty much everything should be predicted somehow), let them blow up WAPE/WMAE when short-series volume is big. From my experience in business, I think this is a must-report pretty much at all times - because overall forecast performance is the most important thing.
 
-# In practice, I’d do both:
+# We're going to do both:
 
     # Panel metrics (all series) → operational view.
 
