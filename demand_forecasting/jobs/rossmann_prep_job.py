@@ -24,6 +24,10 @@ spark = (
     .getOrCreate()
 )
 
+# Location of the parquet file written by rossmann_ingest_job
+ROSSMANN_PANEL_PARQUET = Path(
+    "demand_forecasting/data/kaggle_rossmann/rossmann_panel.parquet"
+)
 
 def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     t_start_all = time.time()
@@ -45,7 +49,6 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     # Config and preprocessor
     # ----------------------------------------------------------------------------------
     config = TSPreprocessingConfig(
-        # use the temp view name here, not a filesystem path
         source_table="rossmann_panel",
         # for local Spark, "default" is usually fine
         output_catalog="default",
@@ -53,8 +56,8 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         raw_date_col="ds",
         raw_value_col="y",
         group_col="time_series_id",
-        # facility dims you added to the config
-        facility_col="time_series_id",  # here, facility == store id
+        facility_col="time_series_id",  # here, facility == store id , which is same as time_series_id
+        time_granularity="week",
         facility_dim_col1="StoreType",
         facility_dim_col2="Assortment",
         interpolation_method="linear",

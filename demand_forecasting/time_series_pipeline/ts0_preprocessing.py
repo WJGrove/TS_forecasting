@@ -34,10 +34,19 @@ class TSPreprocessingConfig:
     Change the names as needed for each project.
     """
 
-    # source and destination tables
+    # Name of the Spark table or view to read from
+    # e.g. "data_science.forecast_dev.raw_weekly_sales" on Databricks
+    # or a temp view like "rossmann_panel" in local Spark.
     source_table: str = "source table name here"
-    output_catalog: str = "save location name here"
+
+    # Spark database/schema name to write into, NOT a filesystem path.
+    # On Databricks this might be something like "forecast_dev.data_science".
+    # Locally you can use "default" or a small project DB like "forecast_local".
+    output_catalog: str = "forecast_dev.data_science"
+
+    # Logical table name within that database/schema.
     output_table_name: str = "ts_preprocessed"
+
 
     # Column names in the input table
     raw_value_col: str = "y"
@@ -511,4 +520,4 @@ class TSPreprocessor:
         )
 
 
-# Later we can add some partitioning options
+# Later, add some partitioning options
