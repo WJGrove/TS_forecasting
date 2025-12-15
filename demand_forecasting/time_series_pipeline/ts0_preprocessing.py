@@ -35,7 +35,7 @@ class TSPreprocessingConfig:
     """
 
     # source and destination tables
-    source_table: str = "forecast_dev.data_science.ts_source_view"
+    source_table: str = "source table name here"
     output_catalog: str = "forecast_dev.data_science"
     output_table_name: str = "ts_preprocessed"
 
