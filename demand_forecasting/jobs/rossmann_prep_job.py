@@ -13,6 +13,15 @@ from demand_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostic
 from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
 
 
+# The first ten lines of this file are only needed for testing and debugging locally, outside of Databricks.
+import os
+
+# Force Spark to use a safe hostname on Windows (avoid underscores in machine name issues, my machine name has underscores)
+os.environ["SPARK_LOCAL_HOSTNAME"] = "localhost"
+
+from pyspark.sql import SparkSession, functions as F
+
+
 # --------------------------------------------------------------------------------------
 # Local SparkSession for testing/debugging (Databricks would provide spark for us)
 # --------------------------------------------------------------------------------------
