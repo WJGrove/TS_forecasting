@@ -72,18 +72,17 @@ def compute_wape(
     group_col: str,
     date_col: str,
     target_col: str,
-    forecast_col: str,
+    forecast_col: str = "y_hat",
 ) -> float:
     """
     Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
 
-    WAPE = sum(|y - y_hat|) / sum(y)
+    WAPE = sum(|y - y_hat|) / sum(|y|)
 
     Both dataframes must have (group_col, date_col) keys.
-    This computes a *global* WAPE (not per-series), which is usually what you
-    want for panel-level model comparison.
+    This computes a *global* WAPE (not per-series).
     """
-    # Keep only the columns we need, and avoid accidental column name collisions.
+    # Keep only the columns we need
     actual_trim = df_actual[[group_col, date_col, target_col]].copy()
     forecast_trim = df_forecast[[group_col, date_col, forecast_col]].copy()
 
@@ -91,7 +90,6 @@ def compute_wape(
         forecast_trim,
         on=[group_col, date_col],
         how="inner",
-        suffixes=("_actual", "_forecast"),
     )
 
     if merged.empty:
@@ -100,18 +98,19 @@ def compute_wape(
             "cannot compute WAPE."
         )
 
-    abs_err = (
-        merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"]
-    ).abs()
+    y = merged[target_col].astype("float64")
+    y_hat = merged[forecast_col].astype("float64")
+
+    abs_err = (y - y_hat).abs()
     total_abs_err = abs_err.sum()
-    total_actual = merged[f"{target_col}_actual"].abs().sum()
+    total_actual = y.abs().sum()
 
     if total_actual == 0:
-        # Degenerate case: no volume at all → WAPE is undefined in a strict sense.
-        # Returning NaN here is safer than dividing by zero.
+        # Degenerate case: no volume at all → WAPE undefined.
         return float("nan")
 
     return float(total_abs_err / total_actual)
+
 
 
 # Evaluation layer (metrics + interpretation)
