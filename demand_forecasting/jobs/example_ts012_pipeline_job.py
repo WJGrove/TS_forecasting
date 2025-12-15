@@ -25,10 +25,21 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     # Config and preprocessor
     # -----------------------------
     config = TSPreprocessingConfig(
-        source_table="forecast_dev.data_science.ts_source_view",
-        output_catalog="forecast_dev.data_science",
-        output_table_name="ts_preprocessed",
-        group_key_cols=["parent_company_fc", "item_id_fc"],
+        source_table="demand_forecasting/data/kaggle_rossmann/rossmann_panel.parquet",
+        output_catalog="demand_forecasting/data/kaggle_rossmann",
+        output_table_name="rossmann_panel_preprocessed",
+        raw_date_col="ds",
+        raw_value_col="y",
+        group_col="time_series_id",
+        facility_col="time_series_id", # this happens to be store id in Rossmann
+        facility_dim_col1="StoreType",
+        facility_dim_col2="Assortment",
+        interpolation_method="linear",
+        seasonal_period=52,
+        short_series_threshold=52 * 2,  # 2 years of weekly data
+        inactive_threshold=3,
+        insufficient_data_threshold=1,
+        outlier_threshold=3.0,
     )
 
     pre = TSPreprocessor(spark, config)

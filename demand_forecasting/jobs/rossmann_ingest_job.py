@@ -22,6 +22,7 @@ OUT_PANEL = DATA_DIR / "rossmann_panel.parquet"
 # Core prep logic
 # ------------------------------------------------------------------
 
+
 def load_and_merge_rossmann() -> pd.DataFrame:
     """Load Rossmann train + store metadata and build a clean panel DataFrame."""
 
@@ -43,9 +44,9 @@ def load_and_merge_rossmann() -> pd.DataFrame:
     # 5) Rename key columns to match your forecasting pipeline conventions
     df = df.rename(
         columns={
-            "Store": "time_series_id",   # panel id
-            "Date": "ds",                # time index
-            "Sales": "y",      # target (integer sales)
+            "Store": "time_series_id",  # panel id
+            "Date": "ds",  # time index
+            "Sales": "y",  # target (integer sales)
         }
     )
 
@@ -58,6 +59,7 @@ def load_and_merge_rossmann() -> pd.DataFrame:
         df["is_short_series"] = False
 
     return df
+
 
 def _normalize_dtypes_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -84,6 +86,7 @@ def _normalize_dtypes_for_parquet(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].astype("string")  # or .astype(str)
 
     return df
+
 
 def main() -> None:
     df = load_and_merge_rossmann()

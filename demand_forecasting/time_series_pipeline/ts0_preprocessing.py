@@ -42,7 +42,12 @@ class TSPreprocessingConfig:
     # Column names in the input table
     raw_value_col: str = "y"
     raw_date_col: str = "date"
-    group_col: str = "store"
+    group_col: str = "facility_id"
+
+    facility_col: str | None = "facility_id_fc"
+    facility_dim_col1: str | None = "facility_type"
+    facility_dim_col2: str | None = "region"
+    facility_dim_col3: str | None = "business_unit"
 
     customer_parent_company_col: str | None = "parent_company_fc"
     customer_col: str | None = "soldto_id"
