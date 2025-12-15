@@ -8,3 +8,5 @@ scipy>=1.13,<2
 # Time-series / Spark pipeline
 pyspark>=4.0.1,<5
 statsmodels>=0.14,<1
+
+pyarrow>=15.0

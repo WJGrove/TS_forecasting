@@ -11,7 +11,7 @@ import pandas as pd
 
 # This file lives in demand_forecasting/jobs/, so:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "demand_forecasting" / "data" / "kaggle_rossman"
+DATA_DIR = PROJECT_ROOT / "demand_forecasting" / "data" / "kaggle_rossmann"
 
 RAW_TRAIN = DATA_DIR / "train.csv"
 RAW_STORE = DATA_DIR / "store.csv"
@@ -68,6 +68,7 @@ def main() -> None:
     print("Columns:", list(df.columns))
     print()
     print("Unique series (time_series_id):", df["time_series_id"].nunique())
+    print()
     print(df.head().to_string())
 
     # Save as Parquet for downstream use (Spark or pandas)
