@@ -39,7 +39,7 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         short_series_threshold=52 * 2,  # 2 years of weekly data
         inactive_threshold=3,
         insufficient_data_threshold=1,
-        outlier_threshold=3.0,
+        outlier_threshold=3.0
     )
 
     pre = TSPreprocessor(spark, config)
@@ -111,21 +111,21 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         plotter.plot_short_series_by_all_dims(
             diagnostics,
             value_col="y_clean",
-            prefixes=("customer_", "product_"),
+            prefixes=("customer_", "product_", "facility_"),
         )
 
         # Build the list of dim columns we’ll use for 3.3 and 3.4:
-        #   - only dims that start with "customer_" or "product_"
+        #   - only dims that start with "customer_" or "product_" or "facility_"
         #   - and are actually present in df_final
         dim_cols_for_customer_product = [
             col
             for col in config.dim_cols
-            if (col.startswith("customer_") or col.startswith("product_"))
+            if (col.startswith("customer_") or col.startswith("product_") or col.startswith("facility_"))
             and col in df_final.columns
         ]
 
         # 3.3 Volume by dimension (T52) for ALL such dims
-        print("\n=== Layer 3: plotting (T52 volume by customer_/product_ dims) ===")
+        print("\n=== Layer 3: plotting (T52 volume by customer_/product_/facility_ dims) ===")
         for dim_col in dim_cols_for_customer_product:
             print(f"\n--- Volume by {dim_col} (last 52 periods) ---")
             plotter.plot_volume_by_dimension(
@@ -177,12 +177,17 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     # -----------------------------
     t_overall_end = time.time()
     print("\n=== Overall runtime ===")
-    print(f"  Total (Layers 1–3): {t_overall_end - t_start_all:.2f} sec")
+    # print one message for if plots were run or not
+    if run_plots:
+        print("  (including Layer 3: plotting)")
+    else:
+        print("  (excluding Layer 3: plotting)")
+    print(f"  Total preprocessing: {t_overall_end - t_start_all:.2f} sec")
 
 
 if __name__ == "__main__":
     # Example usage:
     #   - run_plots=False for “just ETL + diagnostics” in production jobs
     #   - use_boxcox=False if you want a quick run without transformation
-    main(run_plots=False, use_boxcox=True)
+    main(run_plots=True, use_boxcox=True)
 
