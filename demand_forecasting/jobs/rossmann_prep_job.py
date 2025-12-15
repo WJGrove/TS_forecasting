@@ -16,7 +16,7 @@ from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotC
 
 
 # --------------------------------------------------------------------------------------
-# Local SparkSession for testing/debugging (Databricks would provide spark for you)
+# Local SparkSession for testing/debugging (Databricks would provide spark for us)
 # --------------------------------------------------------------------------------------
 spark = (
     SparkSession.builder.appName("ts-preprocessing-job")
@@ -24,10 +24,10 @@ spark = (
     .getOrCreate()
 )
 
-# Location of the parquet file written by rossmann_ingest_job
-ROSSMANN_PANEL_PARQUET = Path(
-    "demand_forecasting/data/kaggle_rossmann/rossmann_panel.parquet"
-)
+
+DATA_DIR = Path("demand_forecasting/data/kaggle_rossmann")
+RAW_PANEL_PARQUET = DATA_DIR / "rossmann_panel.parquet"
+PREP_PANEL_PARQUET = DATA_DIR / "rossmann_panel_preprocessed.parquet"
 
 
 def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
@@ -37,7 +37,7 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     spark.sql("CREATE DATABASE IF NOT EXISTS forecast_local")
 
     # Read the Rossmann panel parquet and expose as a temp view
-    df_panel = spark.read.parquet(str(ROSSMANN_PANEL_PARQUET))
+    df_panel = spark.read.parquet(str(RAW_PANEL_PARQUET))
     df_panel.createOrReplaceTempView("rossmann_panel")
 
     # ----------------------------------------------------------------------------------
@@ -48,15 +48,12 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         # for local Spark, "default" is usually fine
         output_catalog="forecast_local",
         output_table_name="rossmann_panel_preprocessed",
-
         raw_date_col="ds",
         raw_value_col="y",
         group_col="time_series_id",
-
         facility_col="time_series_id",  # here, facility == store id , which is same as time_series_id
         facility_dim_col1="StoreType",
         facility_dim_col2="Assortment",
-
         time_granularity="week",
         interpolation_method="linear",
         seasonal_period=52,
@@ -80,8 +77,7 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
     t2 = time.time()
 
     # Also write a parquet so you can inspect it easily with pandas if you want
-    out_parquet_path = data_dir / "rossmann_panel_preprocessed.parquet"
-    df_final.write.mode("overwrite").parquet(str(out_parquet_path))
+    df_final.write.mode("overwrite").parquet(str(PREP_PANEL_PARQUET))
 
     print("\n=== Layer 1: preprocessing ===")
     print(
@@ -94,7 +90,7 @@ def main(run_plots: bool = False, use_boxcox: bool = True) -> None:
         f"  Total Layer 1 runtime:                                      {t2 - t0:.2f} sec"
     )
     print(
-        f"  Preprocessed parquet written to:                             {out_parquet_path}"
+        f"  Preprocessed parquet written to:                             {PREP_PANEL_PARQUET}"
     )
 
     # ----------------------------------------------------------------------------------
