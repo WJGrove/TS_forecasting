@@ -7,7 +7,7 @@ This repository is meant to be a jumping off point for time series forecasting p
 - **Language:** Python 3.8+
 - **Layout:** See the `src` package for modules and example jobs.
 
-**Repository structure**
+## Repository structure
 - 'src/' — main source folder
 	- `src/config/` — project configuration and settings
 	- `src/ts_forecasting/` — main package containing data, jobs, RAG tools, and time-series pipeline modules
@@ -16,7 +16,7 @@ This repository is meant to be a jumping off point for time series forecasting p
 		- `time_series_pipeline/` — preprocessing, diagnostics, plotting, forecasting and evaluation helpers
 		- `rag/` — retrieval-augmented generation helpers, chat CLI, and indexing utilities for developer assistance
 
-Getting started
+## Getting started
 
 Create a virtual environment and install the project in editable mode:
 
@@ -36,7 +36,7 @@ python -m ts_forecasting.env_info
 
 Dependencies are managed in `pyproject.toml`. Editable installs will create local build metadata like `forecasting.egg-info/`—it’s ignored by Git.
 
-Running modules
+## Running modules
 
 With the editable install you do not need to set PYTHONPATH:
 
@@ -47,13 +47,13 @@ python -m ts_forecasting.jobs.rossmann_prep_job
 
 (If you choose not to install in editable mode, set `PYTHONPATH=./src` before running modules.)
 
-Configuration
+**Configuration**
 
 Copy `.env.example` → `.env` and fill in any needed values.
 
 Project settings live in `src/config/settings.py` (Pydantic). Typical fields include paths, logging level, and API keys.
 
-Data
+**Data**
 
 Dataset files are not tracked. For the Rossmann example, place:
 
@@ -67,14 +67,14 @@ src/ts_forecasting/data/kaggle_rossmann/
 
 Artifacts like RAG indices (e.g., `.rag_index.pkl`) are generated locally and ignored.
 
-What’s included
+**What’s included**
 
-- Jobs: src/ts_forecasting/jobs/rossmann_ingest_job.py, rossmann_prep_job.py
+- Job Examples: src/ts_forecasting/jobs/rossmann_ingest_job.py, rossmann_prep_job.py
 - Pipeline utilities: preprocessing, diagnostics, plotting, forecasting, evaluation under time_series_pipeline/
 - RAG helpers: developer-oriented code/doc search tools in rag/
 - CLI sample: `ts_forecasting.env_info` prints selected settings for a quick health-check
 
-Dev notes
+## Dev notes
 
 Common local folders/files ignored by Git: virtualenvs, data, Spark warehouse, build metadata, caches, RAG indices.
 
@@ -88,7 +88,7 @@ VS Code (optional): set the interpreter to `.venv_tsf` and, for IntelliSense,
 }
 ```
 
-Acceptance checks
+**Acceptance checks**
 
 Fresh venv → `python -m pip install -e .` succeeds.
 
