@@ -1,5 +1,3 @@
-# demand_forecasting/rag/chat_cli.py
-
 from __future__ import annotations
 
 import textwrap
@@ -80,7 +78,7 @@ def _chat_with_context(
 
     system_msg = textwrap.dedent(
         """
-        You are an assistant helping a developer understand and refactor a time series
+        You are an assistant helping a developer build a scalable time series
         forecasting codebase. You are given context chunks from the repository
         (Python modules for preprocessing, diagnostics, plotting, and forecasting),
         plus some conversation history.
@@ -95,7 +93,7 @@ def _chat_with_context(
         If you are unsure whether something is non-standard, do not speculate.
         - When relevant, mention the statistical or mathematical concepts behind the code.
         - Be concise but precise. The user is experienced in mathematical and statistical
-        concepts but is less experienced with software design and large Python codebases.
+        concepts but is less experienced with software design and large codebases.
         """
     ).strip()
 

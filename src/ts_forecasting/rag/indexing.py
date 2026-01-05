@@ -1,5 +1,3 @@
-# demand_forecasting/rag/indexing.py
-
 from __future__ import annotations
 
 import pickle
@@ -186,8 +184,8 @@ def build_index(cfg: RAGConfig) -> RAGIndex:
     Build a fresh index from the configured source_root and save it to disk.
 
     Usage:
-        from demand_forecasting.rag.config import RAGConfig
-        from demand_forecasting.rag.indexing import build_index
+        from ts_forecasting.rag.config import RAGConfig
+        from ts_forecasting.rag.indexing import build_index
 
         cfg = RAGConfig()
         index = build_index(cfg)

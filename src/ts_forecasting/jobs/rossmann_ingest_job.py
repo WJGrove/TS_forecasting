@@ -9,9 +9,9 @@ import pandas as pd
 # Paths
 # ------------------------------------------------------------------
 
-# This file lives in demand_forecasting/jobs/, so:
+# This file lives in ts_forecasting/jobs/, so:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "demand_forecasting" / "data" / "kaggle_rossmann"
+DATA_DIR = PROJECT_ROOT / "ts_forecasting" / "data" / "kaggle_rossmann"
 
 RAW_TRAIN = DATA_DIR / "train.csv"
 RAW_STORE = DATA_DIR / "store.csv"

@@ -1,5 +1,3 @@
-# ts2_plots.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
