@@ -17,7 +17,7 @@ class RAGConfig:
     """
 
     # Root folder to scan for code (relative to repo root)
-    source_root: Path = Path("demand_forecasting")
+    source_root: Path = Path("ts_forecasting")
 
     # Which files to include (relative to source_root)
     include_globs: List[str] = field(
