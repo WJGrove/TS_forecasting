@@ -1,6 +1,6 @@
 # TS-prep-vis-forecast
 
-This repository is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes: data ingestion + preprocessing, diagnostics, visualizations, forecasting pipelines, and evaluation utilities. Includes example jobs using the Rossmann sales dataset from Kaggle.
+This repository is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes: data ingestion + preprocessing, diagnostics, visualizations, forecasting pipelines, and evaluation utilities. It includes example jobs using the Rossmann sales dataset from Kaggle, as well as retrieval-augmented generation (RAG) tools to help developers query code and documentation. It is not yet complete but can be functional within a week of focused work - depending on project needs.
 
 ## Quick overview
 - **Purpose:** Provide reusable building blocks for time series projects (preprocessing, transformation, modeling, plotting, and evaluation).
