@@ -5,12 +5,12 @@ from pathlib import Path
 
 from pyspark.sql import SparkSession, functions as F
 
-from demand_forecasting.time_series_pipeline.ts0_preprocessing import (
+from ts_forecasting.time_series_pipeline.ts0_preprocessing import (
     TSPreprocessingConfig,
     TSPreprocessor,
 )
-from demand_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostics
-from demand_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
+from ts_forecasting.time_series_pipeline.ts1_diagnostics import TSDiagnostics
+from ts_forecasting.time_series_pipeline.ts2_plots import TSPlotter, TSPlotConfig
 
 
 # --------------------------------------------------------------------------------------
@@ -23,7 +23,7 @@ spark = (
 )
 
 
-DATA_DIR = Path("demand_forecasting/data/kaggle_rossmann")
+DATA_DIR = Path("ts_forecasting/data/kaggle_rossmann")
 RAW_PANEL_PARQUET = DATA_DIR / "rossmann_panel.parquet"
 PREP_PANEL_PARQUET = DATA_DIR / "rossmann_panel_preprocessed.parquet"
 
