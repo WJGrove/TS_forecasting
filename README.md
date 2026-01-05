@@ -9,13 +9,13 @@ This repository is meant to be a collection of reusable building blocks for time
 - **Packaging:** Managed with `pyproject.toml`; install in editable mode for development.
 
 ## Repository structure
-- 'src/' — main source folder
-	- `config/` — project configuration and settings
-	- `ts_forecasting/` — main package containing data, jobs, RAG tools, and time-series pipeline modules
-		- `data/kaggle_rossmann/` — placeholder for Rossmann CSVs (dataset files are not included in this repository)
-		- `jobs/` — example ingestion and preparation jobs (`rossmann_ingest_job.py`, `rossmann_prep_job.py`)
-		- `time_series_pipeline/` — preprocessing, diagnostics, plotting, forecasting and evaluation helpers
-		- `rag/` — retrieval-augmented generation helpers, chat CLI, and indexing utilities for developer assistance
+- 'src/' - main source folder
+	- `config/` - project configuration and settings
+	- `ts_forecasting/` - main package containing data, jobs, RAG tools, and time-series pipeline modules
+		- `data/kaggle_rossmann/` - placeholder for Rossmann CSVs (dataset files are not included in this repository)
+		- `jobs/` - example ingestion and preparation jobs (`rossmann_ingest_job.py`, `rossmann_prep_job.py`)
+		- `time_series_pipeline/` - preprocessing, diagnostics, plotting, forecasting and evaluation helpers
+		- `rag/` - retrieval-augmented generation helpers, chat CLI, and indexing utilities for developer assistance
 
 ## Getting started
 
