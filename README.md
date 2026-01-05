@@ -96,7 +96,4 @@ Artifacts like RAG indices (e.g., `.rag_index.pkl`) are generated locally and ig
 - Fresh venv → `python -m pip install -e .` succeeds.
 - `python -m ts_forecasting.env_info` prints an environment summary
 - `python -m ts_forecasting.jobs.rossmann_prep_job` runs from the repo root with no extra path tweaks
-- `git status` shows no tracked venvs, data files, .pkl artifacts, or egg-info metadata.
-
-Git status shows no tracked venvs, data files, *.pkl artifacts, or *.egg-info metadata.
-
+- `git status` shows no tracked venvs, data files, `*.pkl` artifacts, or `*.egg-info` metadata.
