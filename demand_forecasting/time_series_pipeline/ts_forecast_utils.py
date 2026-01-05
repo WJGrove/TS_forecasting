@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql import functions as F
 
@@ -66,24 +67,40 @@ def train_test_split_panel(
 
     return train_df, test_df
 
-def compute_wape(
+
+def _align_actual_forecast(
     df_actual: pd.DataFrame,
     df_forecast: pd.DataFrame,
     group_col: str,
     date_col: str,
     target_col: str,
     forecast_col: str,
-) -> float:
+) -> tuple[pd.Series, pd.Series]:
     """
-    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
+    Align actuals and forecasts on (group_col, date_col) and return
+    (y, y_hat) as float64 Series.
 
-    WAPE = sum(|y - y_hat|) / sum(y)
-
-    Both dataframes must have (group_col, date_col) keys.
-    This computes a *global* WAPE (not per-series), which is usually what you
-    want for panel-level model comparison.
+    This is the common core for all panel-level metrics.
     """
-    # Keep only the columns we need, and avoid accidental column name collisions.
+    if group_col not in df_actual.columns or date_col not in df_actual.columns:
+        raise ValueError(
+            f"df_actual must contain '{group_col}' and '{date_col}'. "
+            f"Got columns: {list(df_actual.columns)}"
+        )
+    if group_col not in df_forecast.columns or date_col not in df_forecast.columns:
+        raise ValueError(
+            f"df_forecast must contain '{group_col}' and '{date_col}'. "
+            f"Got columns: {list(df_forecast.columns)}"
+        )
+    if target_col not in df_actual.columns:
+        raise ValueError(
+            f"target_col '{target_col}' not found in df_actual columns: {list(df_actual.columns)}"
+        )
+    if forecast_col not in df_forecast.columns:
+        raise ValueError(
+            f"forecast_col '{forecast_col}' not found in df_forecast columns: {list(df_forecast.columns)}"
+        )
+
     actual_trim = df_actual[[group_col, date_col, target_col]].copy()
     forecast_trim = df_forecast[[group_col, date_col, forecast_col]].copy()
 
@@ -91,33 +108,146 @@ def compute_wape(
         forecast_trim,
         on=[group_col, date_col],
         how="inner",
-        suffixes=("_actual", "_forecast"),
     )
 
     if merged.empty:
         raise ValueError(
             "No overlapping rows between actuals and forecasts; "
-            "cannot compute WAPE."
+            "cannot compute metrics."
         )
 
-    abs_err = (
-        merged[f"{target_col}_actual"] - merged[f"{target_col}_forecast"]
-    ).abs()
+    y = merged[target_col].astype("float64")
+    y_hat = merged[forecast_col].astype("float64")
+
+    return y, y_hat
+
+def compute_wape(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str = "y_hat",
+) -> float:
+    """
+    Compute WAPE (Weighted Absolute Percentage Error) across all series and dates.
+
+    WAPE = sum(|y - y_hat|) / sum(|y|)
+
+    This is a *global* panel-level metric (not per-series).
+    """
+    y, y_hat = _align_actual_forecast(
+        df_actual=df_actual,
+        df_forecast=df_forecast,
+        group_col=group_col,
+        date_col=date_col,
+        target_col=target_col,
+        forecast_col=forecast_col,
+    )
+
+    abs_err = (y - y_hat).abs()
     total_abs_err = abs_err.sum()
-    total_actual = merged[f"{target_col}_actual"].abs().sum()
+    total_actual = y.abs().sum()
 
     if total_actual == 0:
-        # Degenerate case: no volume at all → WAPE is undefined in a strict sense.
-        # Returning NaN here is safer than dividing by zero.
+        # Degenerate case: no volume at all → WAPE undefined.
         return float("nan")
 
     return float(total_abs_err / total_actual)
 
 
-# Evaluation layer (metrics + interpretation)
-# we'll add compute_mape, compute_rmse, and compute_mae later
+def compute_mae(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str = "y_hat",
+) -> float:
+    """
+    Compute MAE (Mean Absolute Error) across all aligned rows.
 
-# Option A – metrics only on modeled series
+    MAE = mean(|y - y_hat|)
+    """
+    y, y_hat = _align_actual_forecast(
+        df_actual=df_actual,
+        df_forecast=df_forecast,
+        group_col=group_col,
+        date_col=date_col,
+        target_col=target_col,
+        forecast_col=forecast_col,
+    )
+
+    abs_err = (y - y_hat).abs()
+    return float(abs_err.mean())
+
+
+def compute_rmse(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str = "y_hat",
+) -> float:
+    """
+    Compute RMSE (Root Mean Squared Error) across all aligned rows.
+
+    RMSE = sqrt(mean((y - y_hat)^2))
+    """
+    y, y_hat = _align_actual_forecast(
+        df_actual=df_actual,
+        df_forecast=df_forecast,
+        group_col=group_col,
+        date_col=date_col,
+        target_col=target_col,
+        forecast_col=forecast_col,
+    )
+
+    sq_err = (y - y_hat) ** 2
+    return float(np.sqrt(sq_err.mean()))
+
+
+def compute_mape(
+    df_actual: pd.DataFrame,
+    df_forecast: pd.DataFrame,
+    group_col: str,
+    date_col: str,
+    target_col: str,
+    forecast_col: str = "y_hat",
+) -> float:
+    """
+    Compute MAPE (Mean Absolute Percentage Error) across all aligned rows.
+
+    MAPE = mean( |y - y_hat| / |y| ) over rows where |y| > 0
+
+    Returns a value in [0, +inf). Typically interpreted as a *fraction*;
+    multiply by 100 for %.
+    """
+    y, y_hat = _align_actual_forecast(
+        df_actual=df_actual,
+        df_forecast=df_forecast,
+        group_col=group_col,
+        date_col=date_col,
+        target_col=target_col,
+        forecast_col=forecast_col,
+    )
+
+    # Avoid division by zero: only use rows with non-zero actuals
+    mask = y != 0
+    if not mask.any():
+        return float("nan")
+
+    pct_err = ((y[mask] - y_hat[mask]).abs() / y[mask].abs())
+    return float(pct_err.mean())
+
+
+
+
+# Evaluation layer (metrics + interpretation)
+# add at least compute_mape, compute_rmse, and compute_mae functions here
+
+# A – metrics only on modeled series - this is used for model development and tuning.
     # Compute WAPE/MAE/etc. only on the subset you actually forecasted.
     # Then separately report:
 
@@ -125,10 +255,10 @@ def compute_wape(
 
     # % of total test-set volume covered by modeled series.
 
-# Option B – metrics on full panel (uglier but “real-world”)
-    # If you set unmodeled short-series forecasts to zero, they’ll blow up WAPE/WMAE when short-series volume is big. This is “truthful” from a total-system point of view, but can obscure how well your model works where you actually applied it.
+# B – metrics on full panel (uglier but “real-world”)
+    # Set unmodeled short-series forecasts to zero (pretty much everything should be predicted somehow), let them blow up WAPE/WMAE when short-series volume is big. From my experience in business, I think this is a must-report pretty much at all times - because overall forecast performance is the most important thing.
 
-# In practice, I’d do both:
+# We're going to do both:
 
     # Panel metrics (all series) → operational view.
 

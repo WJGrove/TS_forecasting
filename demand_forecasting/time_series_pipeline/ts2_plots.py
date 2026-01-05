@@ -511,3 +511,186 @@ class TSPlotter:
             )
             plt.tight_layout()
             plt.show()
+
+    # ------------------------------------------------------------------
+    # 5) Forecast evaluation plots (pandas-based)
+    # ------------------------------------------------------------------
+
+    def plot_actual_vs_forecast_series(
+        self,
+        df_actual: pd.DataFrame,
+        df_forecast: pd.DataFrame,
+        series_id,
+        *,
+        group_col: str,
+        date_col: str,
+        target_col: str,
+        forecast_col: str = "y_hat",
+        lower_col: Optional[str] = None,
+        upper_col: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> None:
+        """
+        Line plot of actual vs forecast for ONE time series, optionally with
+        a forecast interval band.
+
+        Parameters
+        ----------
+        df_actual : pd.DataFrame
+            Actuals with at least [group_col, date_col, target_col].
+        df_forecast : pd.DataFrame
+            Forecasts with at least [group_col, date_col, forecast_col].
+            May optionally include lower/upper interval columns.
+        series_id :
+            The identifier value of the series to plot (e.g., 'CUST123|ITEM456').
+        group_col : str
+            Column name for the time series identifier (e.g., 'time_series_id').
+        date_col : str
+            Column name for the timestamp (e.g., 'ds').
+        target_col : str
+            Column name for the actual value (e.g., 'y_clean_int').
+        forecast_col : str, default "y_hat"
+            Column name for the point forecast.
+        lower_col, upper_col : str, optional
+            Column names for the lower/upper forecast interval bounds.
+        title : str, optional
+            Custom plot title; if omitted, a default will be constructed.
+        """
+        # Filter to the single series
+        df_a = df_actual[df_actual[group_col] == series_id].copy()
+        df_f = df_forecast[df_forecast[group_col] == series_id].copy()
+
+        if df_a.empty and df_f.empty:
+            print(f"No data found for series_id={series_id!r}.")
+            return
+
+        # Keep just what we need and standardize column names for plotting
+        df_a = df_a[[date_col, target_col]].rename(columns={target_col: "actual"})
+        keep_cols = [date_col, forecast_col]
+        if lower_col is not None and lower_col in df_f.columns:
+            keep_cols.append(lower_col)
+        if upper_col is not None and upper_col in df_f.columns:
+            keep_cols.append(upper_col)
+
+        df_f = df_f[keep_cols].rename(columns={forecast_col: "forecast"})
+        if lower_col is not None and lower_col in df_f.columns:
+            df_f = df_f.rename(columns={lower_col: "lower"})
+        if upper_col is not None and upper_col in df_f.columns:
+            df_f = df_f.rename(columns={upper_col: "upper"})
+
+        # Outer merge so we show history (actuals) + future (forecasts)
+        df_plot = pd.merge(df_a, df_f, on=date_col, how="outer").sort_values(date_col)
+
+        # Ensure datetime index for nicer plotting
+        df_plot[date_col] = pd.to_datetime(df_plot[date_col])
+
+        plt.figure(figsize=self.plot_config.default_figsize)
+
+        # Actuals
+        if df_plot["actual"].notna().any():
+            plt.plot(
+                df_plot[date_col],
+                df_plot["actual"],
+                label="Actual",
+                linewidth=2.0,
+            )
+
+        # Forecast
+        if df_plot["forecast"].notna().any():
+            plt.plot(
+                df_plot[date_col],
+                df_plot["forecast"],
+                label="Forecast",
+                linestyle="--",
+                linewidth=2.0,
+            )
+
+        # Optional forecast interval band
+        if "lower" in df_plot.columns and "upper" in df_plot.columns:
+            valid_ci = df_plot["lower"].notna() & df_plot["upper"].notna()
+            if valid_ci.any():
+                plt.fill_between(
+                    df_plot[date_col],
+                    df_plot["lower"],
+                    df_plot["upper"],
+                    where=valid_ci,
+                    alpha=0.2,
+                    label="Forecast interval",
+                )
+
+        plt.xlabel(date_col)
+        plt.ylabel(target_col)
+        if title is not None:
+            plt.title(title)
+        else:
+            plt.title(f"Actual vs Forecast for series {series_id!r}")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_series_metric_histogram(
+        self,
+        df_series_metrics: pd.DataFrame,
+        metric_col: str,
+        *,
+        bins: int = 30,
+        volume_col: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> None:
+        """
+        Histogram of a per-series error metric (e.g., WAPE, MAPE, RMSE).
+
+        Parameters
+        ----------
+        df_series_metrics : pd.DataFrame
+            DataFrame where each row is one series, typically the output of
+            forecast_evaluation.compute_series_level_metrics(...).
+        metric_col : str
+            Name of the column containing the metric to plot, e.g. 'wape'.
+        bins : int, default 30
+            Number of histogram bins.
+        volume_col : str, optional
+            If provided (e.g. 'series_volume'), prints a basic summary of how
+            much volume lies in various metric ranges, but plotting itself is
+            unweighted.
+        title : str, optional
+            Custom title. If omitted, a default based on metric_col is used.
+        """
+        if metric_col not in df_series_metrics.columns:
+            raise ValueError(
+                f"Column '{metric_col}' not found in df_series_metrics columns: "
+                f"{list(df_series_metrics.columns)}"
+            )
+
+        metric = df_series_metrics[metric_col].astype("float64")
+        metric = metric.replace([np.inf, -np.inf], np.nan).dropna()
+
+        if metric.empty:
+            print(f"No finite values in metric column '{metric_col}' to plot.")
+            return
+
+        plt.figure(figsize=self.plot_config.default_figsize)
+        plt.hist(metric, bins=bins, alpha=0.75)
+        plt.xlabel(metric_col)
+        plt.ylabel("Number of series")
+        plt.title(title or f"Distribution of per-series {metric_col}")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+        # Optional volume commentary
+        if volume_col is not None and volume_col in df_series_metrics.columns:
+            vol = df_series_metrics[volume_col].astype("float64").abs()
+            total_vol = vol.sum()
+            if total_vol > 0:
+                # Simple example: what fraction of volume comes from "bad" series,
+                # e.g. metric > 1 if the metric is WAPE or MAPE as a fraction.
+                bad_mask = (df_series_metrics[metric_col] > 1.0) & vol.notna()
+                bad_vol = vol[bad_mask].sum()
+                frac = bad_vol / total_vol
+                print(
+                    f"Volume share in 'high-error' series "
+                    f"({metric_col} > 1.0): {frac:.2%} of total panel volume."
+                )
+

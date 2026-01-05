@@ -34,15 +34,29 @@ class TSPreprocessingConfig:
     Change the names as needed for each project.
     """
 
-    # source and destination tables
-    source_table: str = "forecast_dev.data_science.ts_source_view"
+    # Name of the Spark table or view to read from
+    # e.g. "data_science.forecast_dev.raw_weekly_sales" on Databricks
+    # or a temp view like "rossmann_panel" in local Spark.
+    source_table: str = "source table name here"
+
+    # Spark database/schema name to write into, NOT a filesystem path.
+    # On Databricks this might be something like "forecast_dev.data_science".
+    # Locally you can use "default" or a small project DB like "forecast_local".
     output_catalog: str = "forecast_dev.data_science"
+
+    # Logical table name within that database/schema.
     output_table_name: str = "ts_preprocessed"
 
+
     # Column names in the input table
-    raw_value_col: str = "ordered_qty"
-    raw_date_col: str = "req_del_fw_start_date"
-    group_col: str = "time_series_id"
+    raw_value_col: str = "y"
+    raw_date_col: str = "date"
+    group_col: str = "facility_id"
+
+    facility_col: str | None = "facility_id_fc"
+    facility_dim_col1: str | None = "facility_type"
+    facility_dim_col2: str | None = "region"
+    facility_dim_col3: str | None = "business_unit"
 
     customer_parent_company_col: str | None = "parent_company_fc"
     customer_col: str | None = "soldto_id"
@@ -86,9 +100,9 @@ class TSPreprocessingConfig:
     # Seasonality and thresholds:
     seasonal_period: int = 52
     # the number of periods below which a series is considered "short":
-    short_series_threshold: int = 52
+    short_series_threshold: int = 52*2  # e.g., 2 years of weekly data
     # the number of consecutive periods with 0s before you consider a series inactive:
-    inactive_threshold: int = 4
+    inactive_threshold: int = 3
     # the minimum number of periods with data required to keep a series:
     insufficient_data_threshold: int = 1
 
@@ -506,4 +520,4 @@ class TSPreprocessor:
         )
 
 
-# Later we can add some partitioning options
+# Later, add some partitioning options
