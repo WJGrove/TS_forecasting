@@ -1,16 +1,17 @@
 # TS-prep-vis-forecast
 
-This repository is meant to be a jumping off point for time series forecasting projects: data ingestion + preprocessing, diagnostics, visualizations, forecasting pipelines, and evaluation utilities. Includes example jobs using the Rossmann sales dataset from Kaggle.
+This repository is meant to be a collection of reusable building blocks for time series forecasting projects: data ingestion + preprocessing, diagnostics, visualizations, forecasting pipelines, and evaluation utilities. Includes example jobs using the Rossmann sales dataset from Kaggle.
 
 ## Quick overview
 - **Purpose:** Provide reusable building blocks for time series projects (preprocessing, transformation, modeling, plotting, and evaluation).
-- **Language:** Python 3.8+
-- **Layout:** See the `src` package for modules and example jobs.
+- **Language:** Python 3.11+
+- **Layout:** Standard src/ layout; importable packages live under src/.
+- **Packaging:** Managed with `pyproject.toml`; install in editable mode for development.
 
 ## Repository structure
 - 'src/' — main source folder
-	- `src/config/` — project configuration and settings
-	- `src/ts_forecasting/` — main package containing data, jobs, RAG tools, and time-series pipeline modules
+	- `config/` — project configuration and settings
+	- `ts_forecasting/` — main package containing data, jobs, RAG tools, and time-series pipeline modules
 		- `data/kaggle_rossmann/` — placeholder for Rossmann CSVs (dataset files are not included in this repository)
 		- `jobs/` — example ingestion and preparation jobs (`rossmann_ingest_job.py`, `rossmann_prep_job.py`)
 		- `time_series_pipeline/` — preprocessing, diagnostics, plotting, forecasting and evaluation helpers
@@ -34,11 +35,9 @@ python -c "import ts_forecasting, config; print('ok')"
 python -m ts_forecasting.env_info
 ```
 
-Dependencies are managed in `pyproject.toml`. Editable installs will create local build metadata like `forecasting.egg-info/`—it’s ignored by Git.
+Dependencies are managed in `pyproject.toml`. Editable installs may create local build metadata (e.g., *.egg-info/); these are ignored by Git.
 
 ## Running modules
-
-With the editable install you do not need to set PYTHONPATH:
 
 ```powershell
 # Example: Rossmann prep job
@@ -49,13 +48,17 @@ python -m ts_forecasting.jobs.rossmann_prep_job
 
 **Configuration**
 
-Copy `.env.example` → `.env` and fill in any needed values.
+- Copy `.env.example` → `.env` and fill in any needed values (paths, log level, API keys).
 
-Project settings live in `src/config/settings.py` (Pydantic). Typical fields include paths, logging level, and API keys.
+- Main settings live in src/config/settings.py. A simple health check is available via:
+
+```powershell
+python -m ts_forecasting.env_info
+```
 
 **Data**
 
-Dataset files are not tracked. For the Rossmann example, place:
+Dataset files are not tracked. For the Rossmann example, place the CSVs here:
 
 ```
 src/ts_forecasting/data/kaggle_rossmann/
@@ -69,16 +72,16 @@ Artifacts like RAG indices (e.g., `.rag_index.pkl`) are generated locally and ig
 
 **What’s included**
 
-- Job Examples: src/ts_forecasting/jobs/rossmann_ingest_job.py, rossmann_prep_job.py
-- Pipeline utilities: preprocessing, diagnostics, plotting, forecasting, evaluation under time_series_pipeline/
+- Jobs: src/ts_forecasting/jobs/rossmann_ingest_job.py, rossmann_prep_job.py
+- Pipeline utilities: preprocessing, diagnostics, plotting, forecasting, and evaluation are under time_series_pipeline/
 - RAG helpers: developer-oriented code/doc search tools in rag/
 - CLI sample: `ts_forecasting.env_info` prints selected settings for a quick health-check
 
-## Dev notes
+## Development notes
 
-Common local folders/files ignored by Git: virtualenvs, data, Spark warehouse, build metadata, caches, RAG indices.
+- Common local folders/files ignored by Git: virtual environments, data, Spark warehouse, build metadata, caches, build metadata, and .pkl artifacts.
 
-VS Code (optional): set the interpreter to `.venv_tsf` and, for IntelliSense,
+- Optional editor settings for VS Code:
 
 ```json
 // .vscode/settings.json
@@ -90,12 +93,10 @@ VS Code (optional): set the interpreter to `.venv_tsf` and, for IntelliSense,
 
 **Acceptance checks**
 
-Fresh venv → `python -m pip install -e .` succeeds.
+- Fresh venv → `python -m pip install -e .` succeeds.
+- `python -m ts_forecasting.env_info` prints an environment summary
+- `python -m ts_forecasting.jobs.rossmann_prep_job` runs from the repo root with no extra path tweaks
+- `git status` shows no tracked venvs, data files, .pkl artifacts, or egg-info metadata.
 
-```powershell
-python -m ts_forecasting.env_info   # prints your environment/log level/DB URL summary
-python -m ts_forecasting.jobs.rossmann_prep_job   # runs from the repo root without setting PYTHONPATH
-```
-
-Git status shows no tracked venvs, data files, .pkl artifacts, or egg-info metadata.
+Git status shows no tracked venvs, data files, *.pkl artifacts, or *.egg-info metadata.
 
