@@ -29,6 +29,10 @@ data/
 .chroma/
 .ipynb_checkpoints/
 
+# Spark
+spark-warehouse/
+spark.log
+
 # VS Code: keep workspace configs, ignore junk
 .vscode/*.code-snippets
 
