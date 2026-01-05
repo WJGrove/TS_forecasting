@@ -17,6 +17,7 @@ htmlcov/
 .env.*
 !.env.example
 .venv/
+.venv_tsf/
 
 # Editors/OS
 .DS_Store
