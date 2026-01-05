@@ -10,7 +10,7 @@ This repository is meant to be a jumping off point for time series forecasting p
 **Repository structure**
 - `src/config/` — project configuration and settings
 - `src/ts_forecasting/` — main package containing data, jobs, RAG tools, and time-series pipeline modules
-	- `data/kaggle_rossmann/` — sample Rossmann dataset CSVs (train/test/store/sample_submission)
+	- `data/kaggle_rossmann/` — placeholder for Rossmann CSVs (dataset files are not included in this repository)
 	- `jobs/` — example ingestion and preparation jobs (`rossmann_ingest_job.py`, `rossmann_prep_job.py`)
 	- `time_series_pipeline/` — preprocessing, diagnostics, plotting, forecasting and evaluation helpers
 	- `rag/` — retrieval-augmented generation helpers, chat CLI, and indexing utilities for developer assistance
@@ -39,7 +39,10 @@ What’s included
 - RAG helper: CLI and indexing utilities to query project docs and code snippets (`src/ts_forecasting/rag`)
 
 Usage notes
-- Data: Place your datasets under `src/ts_forecasting/data/` (subfolders per dataset). Example Rossmann CSVs are already present for experimentation.
+- Data: Dataset files are NOT tracked in this repository. Place datasets under `src/ts_forecasting/data/` (subfolders per dataset). To obtain the Rossmann example data:
+
+	- Manual download: visit https://www.kaggle.com/c/rossmann-store-sales/data, download the dataset, and extract `train.csv`, `test.csv`, `store.csv`, and `sample_submission.csv` into `src/ts_forecasting/data/kaggle_rossmann/`.
+
 - Config: Adjust runtime settings in `src/config/settings.py`.
 - Notebooks & experimentation: Add notebook files at the repo root or a `notebooks/` folder and set `PYTHONPATH='.'` before running.
 
