@@ -79,7 +79,7 @@ Artifacts like RAG indices (e.g., `.rag_index.pkl`) are generated locally and ig
 
 ## Development notes
 
-- Common local folders/files ignored by Git: virtual environments, data, Spark warehouse, build metadata, caches, build metadata, and .pkl artifacts.
+- Common local folders/files ignored by Git: virtual environments, data, Spark warehouse, caches, build metadata, and .pkl artifacts.
 
 - Optional editor settings for VS Code:
 
