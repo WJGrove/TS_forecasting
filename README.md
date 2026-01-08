@@ -1,6 +1,9 @@
 # TS_forecasting
 
-This repository is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes and is a work in progress. It includes or will include: data ingestion + preprocessing, diagnostics, visualizations, multiple forecasting methods/pipelines, and evaluation utilities. It also includes example jobs using the Rossmann sales dataset from Kaggle, as well as retrieval-augmented generation (RAG) tools to help developers query code and documentation. The repo is still incomplete but can be a functional MVP within a week of focused work - depending on the data and project needs.
+This repository is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes and is a work in progress. It includes or will include: data ingestion + preprocessing, diagnostics, visualizations, multiple forecasting methods/pipelines, and evaluation utilities. The majority of the current code is the result of generalizing code from multiple individual past projects, and I'll soon be adding more files for various transformation options and model types (Smoothing, SARIMAX, Regression, LSTM(!), etc.). **So this README is intentionally brief and will be updated soon with much more information detailing usage, methods, and future work.**
+
+The repo also includes example jobs using the Rossmann sales dataset from Kaggle, as well as retrieval-augmented generation (RAG) tools to help developers query code and documentation. The repo is still incomplete but can be a functional MVP within a week of focused work - depending on the data and project needs.
+
 
 ## Quick overview
 - **Purpose:** Provide reusable building blocks for time series projects (preprocessing, transformation, modeling, plotting, and evaluation).
