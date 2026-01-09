@@ -93,7 +93,7 @@ def _chat_with_context(
         If you are unsure whether something is non-standard, do not speculate.
         - When relevant, mention the statistical or mathematical concepts behind the code.
         - Be concise but precise. The user is experienced in mathematical and statistical
-        concepts but is less experienced with software design and large codebases.
+        concepts but is somewhat less experienced with software design and architecture.
         """
     ).strip()
 
