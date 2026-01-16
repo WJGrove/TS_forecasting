@@ -1,15 +1,15 @@
 # TS_forecasting
 
-This repository is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes and is a work in progress. It includes or will include: data ingestion + preprocessing, diagnostics, visualizations, multiple forecasting methods/pipelines, and evaluation utilities. The majority of the current code is the result of generalizing code from multiple individual past projects, and I'll soon be adding more files for various transformation options and model types (Smoothing, SARIMAX, Regression, LSTM, etc.). **So this README is intentionally brief and will be updated soon with much more information detailing usage, methods, and future work.**
+This repo is meant to be a collection of reusable building blocks for time series forecasting projects of all sizes and is a work in progress. It includes or will include: preprocessing, diagnostics, visualizations, multiple forecasting methods, evaluation utilities, and an evaluation app for non-technical consumers. The majority of the current code is the result of generalizing code from multiple individual past projects, and I'll soon be adding more files for various transformation options and model types (Smoothing, SARIMAX, Regression, LSTM, etc.). **So this README is intentionally brief and will be updated soon with much more information detailing usage, methods, and future work.**
 
-The repository also includes example jobs using the Rossmann sales dataset from Kaggle, as well as retrieval-augmented generation (RAG) tools to help developers query code and documentation. The modeling files are still incomplete but can yield functional MVPs within a week of focused work.
+The repository also includes example jobs using the Rossmann sales dataset from Kaggle, as well as retrieval-augmented generation (RAG) tools to help developers query code and documentation. The modeling files and tests are incomplete but can yield functional MVPs within a week of focused work.
 
 
 ## Quick overview
 - **Purpose:** Provide reusable time series tools for preprocessing, transformation, plotting, forcasting, and evaluation.
 - **Language:** Python 3.11+
 - **Layout:** importable packages live under src/.
-- **Packaging:** Managed with `pyproject.toml`; install in editable mode for development.
+- **Packaging:** Managed with `pyproject.toml`
 
 ## Repository structure
 - 'src/' - main source folder
@@ -18,7 +18,7 @@ The repository also includes example jobs using the Rossmann sales dataset from 
 		- `data/kaggle_rossmann/` - placeholder for Rossmann CSVs (dataset files are not included in this repository)
 		- `jobs/` - example ingestion and preparation jobs (`rossmann_ingest_job.py`, `rossmann_prep_job.py`)
 		- `time_series_pipeline/` - preprocessing, diagnostics, plotting, forecasting and evaluation helpers
-		- `rag/` - retrieval-augmented generation helpers, chat CLI, and indexing utilities for developer assistance
+		- `rag/` - retrieval-augmented generation helpers, chat CLI, and indexing utilities
 
 ## Getting started
 
